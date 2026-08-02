@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "framework": null,
+  "buildCommand": null,
+  "outputDirectory": ".",
+  "routes": [
+    { "src": "/services/(.*)", "dest": "/services/$1" },
+    { "src": "/(.*)", "dest": "/$1" }
+  ]
+}

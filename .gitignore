@@ -3,3 +3,12 @@ node_modules/
 .env*
 *.local
 .vercel
+
+# build output
+.next/
+tsconfig.tsbuildinfo
+
+# dev/evidence artifacts
+_qa/
+.playwright-mcp/
+*.png

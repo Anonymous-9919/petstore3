@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  background-color: #f4f5f5;
+  font-family: "Quicksand", var(--font-cairo), "Quicksand Fallback",
+    "Cairo Fallback", "Quicksand", "Cairo", sans-serif;
+  color: rgba(0, 0, 0, 0.87);
+  overflow-x: hidden;
+}
+
+nextjs-portal {
+  display: none !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d6d4d4;
+  border-radius: 3px;
+}
+
+@layer components {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .box-title {
+    padding: 0 10px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 20px;
+    color: #5b5b5b;
+  }
+  .bordered {
+    background: #fff;
+    border-top: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+  }
+}
+
+.product-description p,
+.product-description div,
+.product-description li,
+.product-description h1,
+.product-description h2,
+.product-description h3,
+.product-description h4,
+.product-description h5,
+.product-description h6 {
+  margin: 0 0 0.6em;
+}
+.product-description ul,
+.product-description ol {
+  padding-inline-start: 1.4em;
+}
+.product-description img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 7px;
+}
+.product-description a {
+  color: #ff6600;
+  text-decoration: underline;
+}

@@ -285,21 +285,20 @@ export default function SelectBranchPage() {
 
       {canSave && (
         <div
+          dir="ltr"
           className={cn(
-            "fixed bottom-0 z-[1000] h-[60px] w-full bg-white pt-[7px] pb-[8px] lg:w-[600.47px]",
+            "fixed bottom-0 z-[1000] flex h-[60px] w-full items-center bg-white p-[7px] pb-[8px] lg:w-[600.47px]",
             ar ? "right-0" : "left-0"
           )}
-          style={{ direction: "ltr" }}
         >
-          <div className="flex h-full items-center px-[13px] lg:px-[7px]">
-            <button
-              type="button"
-              onClick={onSave}
-              className="block h-[45px] w-full rounded-[4px] bg-brand text-[14px] font-bold leading-[24.5px] text-white mb-[3.5px]"
-            >
-              {ar ? "حفظ" : "Done"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onSave}
+            dir={ar ? "rtl" : "ltr"}
+            className="mx-auto mb-[3.5px] flex h-[45px] w-[97%] items-center justify-center rounded-[4px] bg-brand text-[12.25px] font-medium leading-[21.4375px] text-black/[0.87]"
+          >
+            {ar ? "حفظ" : "Done"}
+          </button>
         </div>
       )}
     </>

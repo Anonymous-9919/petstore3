@@ -39,22 +39,19 @@ export default function AreaBottomBar() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40">
-      <div
-        className={cn(
-          "flex h-[60px] w-full flex-col items-center bg-white pt-[5px] pb-[10px] lg:w-[calc(100%*5/12)]",
-          ar
-            ? "lg:ml-[calc(100%*7/12)] lg:mr-0"
-            : "lg:ml-0 lg:mr-[calc(100%*7/12)]"
-        )}
+    <div
+      className={cn(
+        "fixed bottom-0 z-40 flex h-[60px] w-full items-center bg-white p-[7px] pb-[8px] lg:w-[600.47px]",
+        ar ? "right-0" : "left-0"
+      )}
+    >
+      <Link
+        href="/select/branch"
+        dir={ar ? "rtl" : "ltr"}
+        className="mx-auto mb-[3.5px] flex h-[45px] w-[97%] items-center justify-center rounded-[4px] bg-brand text-[12.25px] font-medium leading-[21.4375px] text-black/[0.87]"
       >
-        <Link
-          href="/select/branch"
-          className="flex h-[45px] w-[calc(100%-31px)] items-center justify-center rounded-[4px] bg-brand text-[12.25px] font-medium text-white"
-        >
-          {label}
-        </Link>
-      </div>
+        {label}
+      </Link>
     </div>
   );
 }

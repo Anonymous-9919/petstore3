@@ -17,7 +17,8 @@ export default function ProductPage() {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
   const slugs = params?.ProductSlug ?? [];
-  const slug = slugs[slugs.length - 1] ?? "";
+  const rawSlug = slugs[slugs.length - 1] ?? "";
+  const slug = safeDecode(rawSlug);
 
   const all = use(getProducts());
   const prod = all.find((p) => p.slug === slug);
@@ -317,4 +318,12 @@ function ProductMissing() {
       </div>
     </>
   );
+}
+
+function safeDecode(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }

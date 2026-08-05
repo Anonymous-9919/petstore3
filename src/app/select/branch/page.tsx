@@ -287,8 +287,8 @@ export default function SelectBranchPage() {
         <div
           dir="ltr"
           className={cn(
-            "fixed bottom-0 z-[1000] flex h-[60px] w-full items-center bg-white p-[7px] pb-[8px] lg:w-[600.47px]",
-            ar ? "right-0" : "left-0"
+            "fixed bottom-0 z-[1000] flex h-[60px] w-full items-center bg-white p-[7px] pb-[8px]",
+            ar ? "right-0 md:w-[41.7%]" : "left-0 md:w-[41.6%]"
           )}
         >
           <button

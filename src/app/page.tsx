@@ -36,7 +36,7 @@ export default function HomePage() {
       <div className="hidden lg:block">
         <HomeHeader />
       </div>
-      <div className="lg:pt-0">
+      <div className="pt-[55px] lg:pt-0">
         <MobileCarousel />
         <StoreInfoMobile />
       </div>

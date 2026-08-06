@@ -21,6 +21,14 @@ nextjs-portal {
   display: none !important;
 }
 
+html::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+html::-webkit-scrollbar-thumb {
+  background: transparent;
+}
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -75,4 +83,34 @@ nextjs-portal {
 .product-description a {
   color: #ff6600;
   text-decoration: underline;
+}
+
+@keyframes flipInY {
+  from {
+    transform: perspective(400px) rotate3d(0, 1, 0, 90deg);
+    animation-timing-function: ease-in;
+    opacity: 0;
+  }
+  40% {
+    transform: perspective(400px) rotate3d(0, 1, 0, -20deg);
+    animation-timing-function: ease-in;
+  }
+  60% {
+    transform: perspective(400px) rotate3d(0, 1, 0, 10deg);
+    opacity: 1;
+  }
+  80% {
+    transform: perspective(400px) rotate3d(0, 1, 0, -5deg);
+  }
+  to {
+    transform: perspective(400px);
+  }
+}
+
+.animated.flipInY {
+  -webkit-backface-visibility: visible !important;
+  backface-visibility: visible !important;
+  animation-name: flipInY;
+  animation-duration: 1s;
+  animation-fill-mode: both;
 }

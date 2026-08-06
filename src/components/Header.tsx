@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Search, ShoppingCart, User } from "lucide-react";
 import {
@@ -145,11 +146,38 @@ export function MobileHeader() {
   const ar = lang === "ar";
   const setLang = useLang((s) => s.setLang);
   const count = useCart((s) => s.count());
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY >= 650);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <div
-      className="flex h-[55px] w-full items-start justify-between border-b border-[#dee2e6] bg-white px-[10px] pt-[4px]"
+      className={cn(
+        "fixed top-0 left-0 right-0 z-[1000] flex w-full items-start justify-between bg-white px-[10px] pt-[4px]",
+        scrolled ? "h-[55px] border-b border-[#dee2e6]" : "h-[54px]"
+      )}
       dir={ar ? "rtl" : "ltr"}
     >
+      {scrolled && (
+        <div
+          className="pointer-events-none absolute left-1/2 top-0 h-[45px] w-[50px] -translate-x-1/2"
+        >
+          <div className="animated flipInY flex h-full w-full items-start justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={storeData.logo}
+              alt=""
+              className="object-cover"
+              style={{ width: 36, height: 39, marginTop: 7 }}
+            />
+          </div>
+        </div>
+      )}
       <Link
         href="/cart"
         aria-label="Cart"

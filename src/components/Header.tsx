@@ -237,7 +237,8 @@ export function HomeHeader() {
       <Link
         href="/"
         className={cn(
-          "relative hidden h-[88px] w-full items-start justify-between pl-[15px] transition-colors duration-150 hover:bg-black/[0.04] lg:flex"
+          "relative hidden h-[88px] w-full items-start justify-between pl-[15px] transition-colors duration-150 hover:bg-black/[0.04] lg:flex",
+          ar ? "" : "pr-[15px]"
         )}
       >
         <div

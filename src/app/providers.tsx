@@ -1,13 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useLang } from "@/lib/state";
 import DesktopPanel from "@/components/DesktopPanel";
+import ReviewOrderBar from "@/components/ReviewOrderBar";
 import { cn } from "@/lib/utils";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
+  const pathname = usePathname();
+
+  const showReviewOrder =
+    pathname !== "/cart" &&
+    pathname !== "/checkout" &&
+    !pathname.startsWith("/select/") &&
+    !pathname.startsWith("/product/");
 
   useEffect(() => {
     const root = document.documentElement;
@@ -28,6 +37,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         )}
       >
         {children}
+        {showReviewOrder && <ReviewOrderBar />}
       </div>
     </div>
   );

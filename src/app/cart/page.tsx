@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { CategoryHeader, SubHeader, MobilePageHeader } from "@/components/Header";
+import ReviewOrderBar from "@/components/ReviewOrderBar";
 import { getMsg } from "@/lib/i18n";
 import { useCart, useDelivery, useLang } from "@/lib/state";
 import { fmtPrice } from "@/lib/utils";
@@ -57,7 +58,7 @@ export default function CartPage() {
       <div className="hidden lg:block">
         <SubHeader title={t("myCart")[lang === "ar" ? "ar" : "en"]} />
       </div>
-      <div className="px-4 py-3 lg:pt-0 pt-[55px]">
+      <div className="px-4 pt-[55px] pb-[70px] lg:pt-0">
         <ul className="space-y-3">
           {items.map((it) => {
             const name = lang === "ar" && it.ar_name ? it.ar_name : it.name;
@@ -133,14 +134,8 @@ export default function CartPage() {
             <span className="text-brand">{fmtPrice(grand, lang)}</span>
           </div>
         </div>
-
-        <Link
-          href="/checkout"
-          className="mt-4 flex h-12 w-full items-center justify-center rounded bg-brand text-[15px] font-bold text-white"
-        >
-          {t("goToCheckout")[lang === "ar" ? "ar" : "en"]}
-        </Link>
       </div>
+      <ReviewOrderBar href="/checkout" />
     </>
   );
 }

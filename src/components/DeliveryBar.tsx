@@ -49,18 +49,20 @@ export default function DeliveryBar() {
         ? mode === "delivery" && !!areaId
         : mode === "pickup" && !!branchId;
     return (
-      <button
-        type="button"
-        onClick={() => onPickMode(m)}
-        className={cn(
-          "mx-[8.333%] flex w-[33.333%] items-center justify-center rounded-[3px] text-[12.25px] font-bold transition-colors duration-150",
-          selected
-            ? "h-[37px] bg-brand text-ink hover:bg-[#b24700]"
-            : "h-[39px] border border-[#666] text-[#666] hover:bg-black/[0.04]"
-        )}
-      >
-        {label}
-      </button>
+      <div className="mx-auto flex w-[33.333%] justify-center">
+        <button
+          type="button"
+          onClick={() => onPickMode(m)}
+          className={cn(
+            "flex w-[80px] items-center justify-center rounded-[3px] text-[12.25px] font-bold transition-colors duration-150",
+            selected
+              ? "h-[37px] bg-brand text-ink hover:bg-[#b24700]"
+              : "h-[39px] border border-[#666] text-[#666] hover:bg-black/[0.04]"
+          )}
+        >
+          {label}
+        </button>
+      </div>
     );
   };
 

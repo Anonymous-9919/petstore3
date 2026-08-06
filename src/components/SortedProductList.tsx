@@ -7,7 +7,7 @@ import type { FsState } from "@/components/FilterSort";
 import { AddIcon } from "@/components/MuiIcons";
 import { categoryList, sortCategories } from "@/data/loader";
 import { getMsg } from "@/lib/i18n";
-import { useCart, useLang } from "@/lib/state";
+import { useCart, useLang, useLocationSet } from "@/lib/state";
 import type { Category, Product } from "@/lib/types";
 import { cn, discountPercent, fmtPrice } from "@/lib/utils";
 
@@ -15,6 +15,7 @@ function ProductListRow({ product }: { product: Product }) {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
   const add = useCart((s) => s.add);
+  const locationSet = useLocationSet();
   const router = useRouter();
   const t = getMsg;
 
@@ -27,6 +28,10 @@ function ProductListRow({ product }: { product: Product }) {
     e.stopPropagation();
     if (product.options && product.options.length > 0) {
       router.push(`/product/${product.category_slug || "category"}/${product.slug}`);
+      return;
+    }
+    if (!locationSet) {
+      router.push("/select/branch");
       return;
     }
     add({

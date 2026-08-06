@@ -7,7 +7,7 @@ import { CategoryHeader } from "@/components/Header";
 import { AddIcon, MinusIcon, ShareIcon } from "@/components/MuiIcons";
 import { getProducts } from "@/data/loader";
 import { getMsg } from "@/lib/i18n";
-import { useCart, useLang } from "@/lib/state";
+import { useCart, useLang, useLocationSet } from "@/lib/state";
 import { cn, fmtPrice, sanitizeHtml } from "@/lib/utils";
 import { use } from "react";
 
@@ -25,6 +25,7 @@ export default function ProductPage() {
 
   const t = getMsg;
   const add = useCart((s) => s.add);
+  const locationSet = useLocationSet();
 
   const [qty, setQty] = useState(1);
   const [selected, setSelected] = useState<Record<number, number>>({});
@@ -63,6 +64,10 @@ export default function ProductPage() {
 
   const handleAdd = (buyNow: boolean) => {
     if (!canAdd) return;
+    if (!locationSet) {
+      router.push("/select/branch");
+      return;
+    }
     const key = `${prod.id}-${(effective.options as { choiceId: number | null }[])
       .map((o) => o.choiceId ?? "")
       .join("-")}`;

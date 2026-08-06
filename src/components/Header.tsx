@@ -173,7 +173,7 @@ export function MobileHeader() {
               src={storeData.logo}
               alt=""
               className="object-cover"
-              style={{ width: 36, height: 39, marginTop: 7 }}
+              style={{ width: 38, height: 38, marginTop: 7 }}
             />
           </div>
         </div>

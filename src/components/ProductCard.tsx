@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/types";
 import { getMsg } from "@/lib/i18n";
-import { useCart, useLang } from "@/lib/state";
+import { useCart, useLang, useLocationSet } from "@/lib/state";
 import { discountPercent, fmtPrice, cn } from "@/lib/utils";
 import { AddIcon } from "@/components/MuiIcons";
 
@@ -21,12 +21,19 @@ export function DiscountBadge({ product }: { product: Product }) {
 function AddToCartButton({ product }: { product: Product }) {
   const lang = useLang((s) => s.lang);
   const add = useCart((s) => s.add);
+  const locationSet = useLocationSet();
   const router = useRouter();
   const t = getMsg;
 
-  const handle = () => {
+  const handle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (product.options && product.options.length > 0) {
       router.push(`/product/${product.category_slug || "category"}/${product.slug}`);
+      return;
+    }
+    if (!locationSet) {
+      router.push("/select/branch");
       return;
     }
     add({
@@ -58,12 +65,19 @@ function AddToCartButton({ product }: { product: Product }) {
 function BuyNowButton({ product }: { product: Product }) {
   const lang = useLang((s) => s.lang);
   const add = useCart((s) => s.add);
+  const locationSet = useLocationSet();
   const router = useRouter();
   const t = getMsg;
 
-  const handle = () => {
+  const handle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (product.options && product.options.length > 0) {
       router.push(`/product/${product.category_slug || "category"}/${product.slug}`);
+      return;
+    }
+    if (!locationSet) {
+      router.push("/select/branch");
       return;
     }
     add({

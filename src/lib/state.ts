@@ -140,6 +140,13 @@ export const useWishlist = create<WishlistState>()(
   )
 );
 
+export function useLocationSet(): boolean {
+  const mode = useDelivery((s) => s.mode);
+  const areaId = useDelivery((s) => s.areaId);
+  const branchId = useDelivery((s) => s.branchId);
+  return (mode === "delivery" && !!areaId) || (mode === "pickup" && !!branchId);
+}
+
 export const useDelivery = create<DeliveryState>()(
   persist(
     (set) => ({

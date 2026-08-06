@@ -10,10 +10,10 @@
  "default_dial_code": "kw",
   "branches": [],
   "slider_images": [
-    "https://tapcom-live.ams3.cdn.digitaloceanspaces.com/media/cache/17/ae/17ae187c42d53b5cfe0b622ff46bca95.jpg",
-    "https://tapcom-live.ams3.cdn.digitaloceanspaces.com/media/cache/05/43/05438444f1060c19f77dcb86583491ed.jpg",
-    "https://tapcom-live.ams3.cdn.digitaloceanspaces.com/media/cache/9f/d0/9fd0a249feff2c61704bdab12a05e7e6.jpg",
-    "https://tapcom-live.ams3.cdn.digitaloceanspaces.com/media/cache/54/52/54520d644d9df159e87f886bd62afc7d.jpg"
+    "/assets/4793a03ddec0.jpg",
+    "/assets/79f168f27db9.jpg",
+    "/assets/b2083b95d9cc.jpg",
+    "/assets/c5e96f119ab5.jpg"
   ],
   "areas": [],
  "countries": [],

@@ -69,6 +69,7 @@ export default function HomePage() {
           setApplied(fsState);
           setFsOpen(false);
         }}
+        onClear={(s) => setApplied(s)}
       />
     </>
   );

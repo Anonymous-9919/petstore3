@@ -82,12 +82,14 @@ export function FilterSortDrawer({
   onChange,
   onClose,
   onApply,
+  onClear,
 }: {
   open: boolean;
   state: FsState;
   onChange: (s: FsState) => void;
   onClose: () => void;
   onApply: () => void;
+  onClear?: (s: FsState) => void;
 }) {
   const lang = useLang((s) => s.lang);
   const setLang = useLang((s) => s.setLang);
@@ -156,7 +158,7 @@ export function FilterSortDrawer({
             aria-label="close"
             onClick={onClose}
             className={cn(
-              "z-[22] h-[50px] w-[40px] items-center justify-center text-[rgba(0,0,0,0.87)]",
+              "relative z-[22] flex h-[50px] w-[40px] items-center justify-center text-[rgba(0,0,0,0.87)]",
               ar ? "float-right mr-[10px]" : "float-left ml-[10px]"
             )}
           >
@@ -179,7 +181,7 @@ export function FilterSortDrawer({
             type="button"
             onClick={() => setLang(ar ? "en" : "ar")}
             className={cn(
-              "z-[22] h-[50px] w-[40px] items-center justify-center pb-[15px] text-[20px] font-medium text-black lg:hidden",
+              "relative z-[22] flex h-[50px] w-[40px] items-center justify-center pb-[15px] text-[20px] font-medium text-black lg:hidden",
               ar ? "float-left ml-[10px]" : "float-right mr-[10px]"
             )}
           >
@@ -194,7 +196,11 @@ export function FilterSortDrawer({
             <div className="flex items-center">
               <button
                 type="button"
-                onClick={() => set({ sort: null })}
+                onClick={() => {
+                  const next = { ...state, sort: null };
+                  onChange(next);
+                  onClear?.(next);
+                }}
                 className="mr-[18px] font-bold text-[#ff6600]"
               >
                 {t("clearLink")[ar ? "ar" : "en"]}
@@ -240,7 +246,16 @@ export function FilterSortDrawer({
             <div className="flex items-center">
               <button
                 type="button"
-                onClick={() => set({ catFilter: [], priceRange: null, availableOnly: false })}
+                onClick={() => {
+                  const next = {
+                    ...state,
+                    catFilter: [],
+                    priceRange: null,
+                    availableOnly: false,
+                  };
+                  onChange(next);
+                  onClear?.(next);
+                }}
                 className="mr-[18px] font-bold text-[#ff6600]"
               >
                 {t("clearLink")[ar ? "ar" : "en"]}
@@ -318,7 +333,9 @@ export function FilterSortDrawer({
                     type="button"
                     onClick={() => {
                       setPriceDraft([PRICE_MIN, PRICE_MAX]);
-                      set({ priceRange: null });
+                      const next = { ...state, priceRange: null };
+                      onChange(next);
+                      onClear?.(next);
                     }}
                     className="rounded-[4px] border border-[#dedede] bg-white px-4 py-[5px] text-[12px] text-[#333] shadow-none"
                   >

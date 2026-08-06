@@ -237,14 +237,13 @@ export function HomeHeader() {
       <Link
         href="/"
         className={cn(
-          "relative hidden h-[88px] w-full items-start pl-[15px] transition-colors duration-150 hover:bg-black/[0.04] lg:flex",
-          ar ? "justify-end" : "justify-start pr-[15px]"
+          "relative hidden h-[88px] w-full items-start justify-between pl-[15px] transition-colors duration-150 hover:bg-black/[0.04] lg:flex"
         )}
       >
         <div
           className={cn(
             "min-w-0 pt-[13px]",
-            ar ? "mr-3 w-[425px]" : "ml-[74px] w-[425px] grow"
+            ar ? "w-[492px] shrink-0 mr-[104px]" : "w-[425px] shrink-0 ml-[74px]"
           )}
         >
           <p className="truncate text-[14px] font-bold leading-[20px] text-black">{name}</p>

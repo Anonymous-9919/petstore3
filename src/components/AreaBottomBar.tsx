@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getMsg } from "@/lib/i18n";
-import { useCart, useDelivery, useLang } from "@/lib/state";
+import { useCart, useDelivery, useHasMounted, useLang } from "@/lib/state";
 
 export default function AreaBottomBar() {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
+  const mounted = useHasMounted();
   const mode = useDelivery((s) => s.mode);
   const areaId = useDelivery((s) => s.areaId);
   const areaName = useDelivery((s) => s.areaName);
@@ -19,6 +20,7 @@ export default function AreaBottomBar() {
 
   const locationSet =
     (mode === "delivery" && !!areaId) || (mode === "pickup" && !!branchId);
+  if (!mounted) return null;
   if (locationSet || cartCount > 0) return null;
 
   const area = ar ? areaArName || areaName : areaName;

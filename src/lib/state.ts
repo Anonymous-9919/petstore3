@@ -1,8 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { Lang } from "@/lib/i18n";
+
+export function useHasMounted(): boolean {
+  const [m, setM] = useState(false);
+  useEffect(() => setM(true), []);
+  return m;
+}
 
 export interface CartItem {
   key: string;

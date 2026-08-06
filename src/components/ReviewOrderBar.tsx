@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { getMsg } from "@/lib/i18n";
-import { useCart, useLang } from "@/lib/state";
+import { useCart, useHasMounted, useLang } from "@/lib/state";
 import { cn, fmtPrice } from "@/lib/utils";
 
 export default function ReviewOrderBar({
@@ -14,10 +14,11 @@ export default function ReviewOrderBar({
 }) {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
+  const mounted = useHasMounted();
   const count = useCart((s) => s.items.reduce((n, i) => n + i.qty, 0));
   const cartTotal = useCart((s) => s.items.reduce((n, i) => n + i.price * i.qty, 0));
 
-  if (count <= 0) return null;
+  if (!mounted || count <= 0) return null;
 
   const total = totalOverride ?? cartTotal;
   const label =

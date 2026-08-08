@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Cairo, Quicksand } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
+import WhatsAppFloat from "@/components/WhatsAppFloat";
 
 const quicksand = Quicksand({
   weight: ["400", "700"],
@@ -34,6 +35,7 @@ export default function RootLayout({
     >
       <body>
         <Providers>{children}</Providers>
+        <WhatsAppFloat />
       </body>
     </html>
   );

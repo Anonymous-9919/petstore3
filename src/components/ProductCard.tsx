@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/types";
 import { getMsg } from "@/lib/i18n";
-import { useCart, useLang, useLocationSet } from "@/lib/state";
+import { deliveryAddressComplete, useCart, useDelivery, useLang, useLocationSet } from "@/lib/state";
 import { discountPercent, fmtPrice, cn } from "@/lib/utils";
-import { AddIcon } from "@/components/MuiIcons";
+import { AddIcon, MinusIcon } from "@/components/MuiIcons";
 
 export function DiscountBadge({ product }: { product: Product }) {
   const pct = discountPercent(product.price, product.striked_price);
@@ -15,6 +15,54 @@ export function DiscountBadge({ product }: { product: Product }) {
     <span className="absolute top-2 right-[10px] rounded-[3px] bg-brand px-[5px] py-[1px] text-[16px] font-bold leading-[20px] text-white">
       {pct} %
     </span>
+  );
+}
+
+function QtyStepper({ product }: { product: Product }) {
+  const setQty = useCart((s) => s.setQty);
+  const items = useCart((s) => s.items);
+  const item = items.find((i) => i.key === String(product.id));
+  const qty = item?.qty ?? 0;
+
+  const onMinus = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setQty(String(product.id), qty - 1);
+  };
+  const onPlus = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setQty(String(product.id), qty + 1);
+  };
+
+  return (
+    <div
+      className="mx-auto flex h-[30px] w-full items-center justify-around"
+      style={{ direction: "ltr" }}
+    >
+      <button
+        type="button"
+        aria-label="decrease"
+        onClick={onMinus}
+        className="flex h-[30px] w-[30px] items-center justify-center"
+      >
+        <MinusIcon className="h-[20px] w-[20px] text-brand" />
+      </button>
+      <div
+        className="min-w-[30px] rounded-[5px] border-[0.5px] border-[#dedede] px-[6px] py-[1px] text-center text-[14px] font-bold text-brand"
+        style={{ borderWidth: 0.5 }}
+      >
+        {qty}
+      </div>
+      <button
+        type="button"
+        aria-label="increase"
+        onClick={onPlus}
+        className="flex h-[30px] w-[30px] items-center justify-center"
+      >
+        <AddIcon className="h-[20px] w-[20px] text-brand" />
+      </button>
+    </div>
   );
 }
 
@@ -66,6 +114,12 @@ function BuyNowButton({ product }: { product: Product }) {
   const lang = useLang((s) => s.lang);
   const add = useCart((s) => s.add);
   const locationSet = useLocationSet();
+  const mode = useDelivery((s) => s.mode);
+  const name = useDelivery((s) => s.name);
+  const phone = useDelivery((s) => s.phone);
+  const block = useDelivery((s) => s.block);
+  const street = useDelivery((s) => s.street);
+  const building = useDelivery((s) => s.building);
   const router = useRouter();
   const t = getMsg;
 
@@ -92,7 +146,16 @@ function BuyNowButton({ product }: { product: Product }) {
       note: "",
       options: [],
     });
-    router.push("/checkout");
+    if (!name.trim() || !phone.trim()) {
+      router.push("/checkout/details");
+    } else if (
+      mode === "delivery" &&
+      !deliveryAddressComplete({ block, street, building })
+    ) {
+      router.push("/checkout/address");
+    } else {
+      router.push("/checkout/confirmation");
+    }
   };
 
   return (
@@ -113,6 +176,8 @@ export default function ProductCard({ product }: { product: Product }) {
   const short = ar ? product.ar_short_description : product.short_description;
   const discount =
     product.striked_price != null && product.striked_price > product.price;
+  const items = useCart((s) => s.items);
+  const inCart = items.some((i) => i.key === String(product.id));
 
   return (
     <div className="mb-[42px] w-full px-2">
@@ -146,10 +211,16 @@ export default function ProductCard({ product }: { product: Product }) {
                 {fmtPrice(product.price, lang)}
               </span>
             </div>
-            <div className={cn("mt-[7px] flex h-[30px] w-full justify-around", ar ? "float-left" : "float-right")}>
-              <AddToCartButton product={product} />
-              <BuyNowButton product={product} />
-            </div>
+            {inCart ? (
+              <div className="mt-[7px] w-full">
+                <QtyStepper product={product} />
+              </div>
+            ) : (
+              <div className={cn("mt-[7px] flex h-[30px] w-full justify-around", ar ? "float-left" : "float-right")}>
+                <AddToCartButton product={product} />
+                <BuyNowButton product={product} />
+              </div>
+            )}
           </div>
         </div>
       </Link>

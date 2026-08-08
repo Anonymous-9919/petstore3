@@ -7,7 +7,13 @@ import { CategoryHeader } from "@/components/Header";
 import { AddIcon, MinusIcon, ShareIcon } from "@/components/MuiIcons";
 import { getProducts } from "@/data/loader";
 import { getMsg } from "@/lib/i18n";
-import { useCart, useLang, useLocationSet } from "@/lib/state";
+import {
+  deliveryAddressComplete,
+  useCart,
+  useDelivery,
+  useLang,
+  useLocationSet,
+} from "@/lib/state";
 import { cn, fmtPrice, sanitizeHtml } from "@/lib/utils";
 import { use } from "react";
 
@@ -26,6 +32,12 @@ export default function ProductPage() {
   const t = getMsg;
   const add = useCart((s) => s.add);
   const locationSet = useLocationSet();
+  const mode = useDelivery((s) => s.mode);
+  const contactName = useDelivery((s) => s.name);
+  const contactPhone = useDelivery((s) => s.phone);
+  const block = useDelivery((s) => s.block);
+  const street = useDelivery((s) => s.street);
+  const building = useDelivery((s) => s.building);
 
   const [qty, setQty] = useState(1);
   const [selected, setSelected] = useState<Record<number, number>>({});
@@ -84,8 +96,18 @@ export default function ProductPage() {
       note: note.trim(),
       options: effective.options as { optionId: number; choiceId: number; label: string }[],
     });
-    if (buyNow) router.push("/checkout");
-    else {
+    if (buyNow) {
+      if (!contactName.trim() || !contactPhone.trim()) {
+        router.push("/checkout/details");
+      } else if (
+        mode === "delivery" &&
+        !deliveryAddressComplete({ block, street, building })
+      ) {
+        router.push("/checkout/address");
+      } else {
+        router.push("/checkout/confirmation");
+      }
+    } else {
       setAdded(true);
       window.setTimeout(() => setAdded(false), 1500);
     }

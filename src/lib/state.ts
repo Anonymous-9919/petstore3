@@ -69,10 +69,31 @@ interface DeliveryState {
   expectedDate: string | null;
   expectedStart: string | null;
   expectedEnd: string | null;
+  name: string;
+  phone: string;
+  addressType: "home" | "apartment" | "office";
+  block: string;
+  street: string;
+  building: string;
+  avenue: string;
+  paci: string;
+  additional: string;
+  payment: string;
   setMode: (m: OrderMode) => void;
   setBranch: (id: number, name?: string, arName?: string) => void;
   setArea: (id: number, name: string, arName: string) => void;
   setDeliveryTime: (t: DeliveryTime) => void;
+  setContact: (name: string, phone: string) => void;
+  setAddress: (a: {
+    addressType?: DeliveryState["addressType"];
+    block?: string;
+    street?: string;
+    building?: string;
+    avenue?: string;
+    paci?: string;
+    additional?: string;
+  }) => void;
+  setPayment: (payment: string) => void;
 }
 
 export const useLang = create<LangState>()(
@@ -154,6 +175,14 @@ export function useLocationSet(): boolean {
   return (mode === "delivery" && !!areaId) || (mode === "pickup" && !!branchId);
 }
 
+export function deliveryAddressComplete(a: {
+  block: string;
+  street: string;
+  building: string;
+}): boolean {
+  return !!a.block.trim() && !!a.street.trim() && !!a.building.trim();
+}
+
 export const useDelivery = create<DeliveryState>()(
   persist(
     (set) => ({
@@ -168,6 +197,16 @@ export const useDelivery = create<DeliveryState>()(
       expectedDate: null,
       expectedStart: null,
       expectedEnd: null,
+      name: "",
+      phone: "",
+      addressType: "home",
+      block: "",
+      street: "",
+      building: "",
+      avenue: "",
+      paci: "",
+      additional: "",
+      payment: "cash",
       setMode: (mode) => set({ mode }),
       setBranch: (branchId, name, arName) =>
         set((s) => ({
@@ -178,6 +217,18 @@ export const useDelivery = create<DeliveryState>()(
       setArea: (areaId, areaName, areaArName) => set({ areaId, areaName, areaArName }),
       setDeliveryTime: ({ type, date, start, end }) =>
         set({ timeType: type, expectedDate: date, expectedStart: start, expectedEnd: end }),
+      setContact: (name, phone) => set({ name, phone }),
+      setAddress: (a) =>
+        set((s) => ({
+          addressType: a.addressType ?? s.addressType,
+          block: a.block ?? s.block,
+          street: a.street ?? s.street,
+          building: a.building ?? s.building,
+          avenue: a.avenue ?? s.avenue,
+          paci: a.paci ?? s.paci,
+          additional: a.additional ?? s.additional,
+        })),
+      setPayment: (payment) => set({ payment }),
     }),
     {
       name: "ps-delivery",

@@ -376,9 +376,13 @@ export function CategoryHeader({
 export function SubHeader({
   title,
   right,
+  showCart = true,
+  showLang = true,
 }: {
   title: string;
   right?: React.ReactNode;
+  showCart?: boolean;
+  showLang?: boolean;
 }) {
   const lang = useLang((s) => s.lang);
   const backLabel = lang === "ar" ? "رجوع" : "Back";
@@ -395,8 +399,8 @@ export function SubHeader({
       <h1 className="flex-1 truncate text-center text-[16px] font-bold text-ink">{title}</h1>
       <div className="flex items-center gap-2">
         {right}
-        <CartButton />
-        <LangToggle />
+        {showCart && <CartButton />}
+        {showLang && <LangToggle />}
       </div>
     </div>
   );

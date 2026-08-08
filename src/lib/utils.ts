@@ -1,14 +1,36 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { storeData } from "@/data/loader";
+import { deliveryData, storeData } from "@/data/loader";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function getAreaLatLng(
+  areaId: number | null | undefined
+): { lat: number; lng: number } | null {
+  if (areaId == null) return null;
+  const charges = (
+    deliveryData as unknown as {
+      branch_delivery_charges: Array<{ area_id: number; area_lat?: string; area_lng?: string }>;
+    }
+  ).branch_delivery_charges;
+  const a = charges.find((x) => x.area_id === areaId);
+  if (!a || !a.area_lat || !a.area_lng) return null;
+  const lat = parseFloat(a.area_lat);
+  const lng = parseFloat(a.area_lng);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  return { lat, lng };
+}
+
 export function fmtPrice(price: number, lang: "ar" | "en"): string {
   const label = lang === "ar" ? "دك" : "KD";
   return `${price.toFixed(3)} ${label}`;
+}
+
+export function fmtPricePrefix(price: number, lang: "ar" | "en"): string {
+  const label = lang === "ar" ? "دك" : "KD";
+  return `${label} ${price.toFixed(3)}`;
 }
 
 export function discountPercent(price: number, striked: number | null | undefined): number {

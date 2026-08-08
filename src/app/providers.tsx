@@ -14,7 +14,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   const showReviewOrder =
     pathname !== "/cart" &&
-    pathname !== "/checkout" &&
+    !pathname.startsWith("/checkout") &&
     !pathname.startsWith("/select/") &&
     !pathname.startsWith("/product/");
 

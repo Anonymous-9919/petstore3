@@ -13,7 +13,7 @@ import {
   SearchIcon,
 } from "@/components/MuiIcons";
 import { storeData } from "@/data/loader";
-import { useCart, useLang } from "@/lib/state";
+import { useCart, useHasMounted, useLang } from "@/lib/state";
 import { getMsg } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -146,6 +146,7 @@ export function MobileHeader() {
   const ar = lang === "ar";
   const setLang = useLang((s) => s.setLang);
   const count = useCart((s) => s.count());
+  const mounted = useHasMounted();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -184,7 +185,7 @@ export function MobileHeader() {
         className="relative flex h-[50px] w-10 items-center justify-center rounded-[4px]"
       >
         <PackageBagIcon className="h-[24px] w-[24px] text-black" />
-        {count > 0 && (
+        {mounted && count > 0 && (
           <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1 text-[11px] font-bold text-white">
             {count}
           </span>
@@ -234,8 +235,7 @@ export function HomeHeader() {
       <div className="lg:hidden">
         <MobileHeader />
       </div>
-      <Link
-        href="/"
+      <div
         className={cn(
           "relative hidden h-[88px] w-full items-start justify-between pl-[15px] transition-colors duration-150 hover:bg-black/[0.04] lg:flex",
           ar ? "" : "pr-[15px]"
@@ -265,7 +265,7 @@ export function HomeHeader() {
           alt=""
           className="absolute left-[15px] top-[15px] h-[60px] w-[60px] object-cover rtl:right-[30px] rtl:left-auto"
         />
-      </Link>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -56,8 +56,6 @@ export default function CheckoutConfirmationPage() {
   const payment = useDelivery((s) => s.payment);
   const setPayment = useDelivery((s) => s.setPayment);
 
-  const [orderNo] = useState(() => Math.floor(100000 + Math.random() * 900000));
-
   const fee = useMemo(() => {
     if (mode !== "delivery" || branchId == null || areaId == null) return 0;
     const a = getBranchAreas(branchId).find((x) => x.id === areaId);
@@ -83,6 +81,7 @@ export default function CheckoutConfirmationPage() {
 
   const placeOrder = () => {
     if (!payment) return;
+    const orderNo = Math.floor(100000 + Math.random() * 900000);
     const q = `?order=${orderNo}`;
     if (payment === "cash") router.push(`/checkout/success${q}`);
     else router.push(`/checkout/payment${q}`);

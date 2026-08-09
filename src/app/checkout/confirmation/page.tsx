@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,24 +13,33 @@ import {
   PersonIcon,
 } from "@/components/Checkout";
 import { LocationOnIcon } from "@/components/MuiIcons";
-import { getBranches, getBranchAreas } from "@/data/loader";
+import { getBranchAreas, getBranches } from "@/data/loader";
 import { getMsg } from "@/lib/i18n";
 import { useCart, useDelivery, useLang } from "@/lib/state";
 import { cn, deliveryRange, fmtPrice, getAreaLatLng, pickupRange } from "@/lib/utils";
 import DeliveryMap from "@/components/DeliveryMap";
 import {
-  ApplePayIcon,
-  CashIcon,
-  KnetIcon,
-  MastercardIcon,
+  AppleLogoIcon,
+  CashBagIcon,
+  CreditCardIcon2,
+  KnetCardIcon,
+  MinusIcon,
+  PlusIcon,
 } from "@/components/PaymentIcons";
 
 const paymentMethods = [
-  { key: "cash", msg: "cash", Icon: CashIcon },
-  { key: "knet", msg: "knet", Icon: KnetIcon },
-  { key: "credit", msg: "credit", Icon: MastercardIcon },
-  { key: "applepay", msg: "applePay", Icon: ApplePayIcon },
+  { key: "cash", msg: "cash", Icon: CashBagIcon },
+  { key: "knet", msg: "knet", Icon: KnetCardIcon },
+  { key: "credit", msg: "credit", Icon: CreditCardIcon2 },
+  { key: "applepay", msg: "applePay", Icon: AppleLogoIcon },
 ] as const;
+
+const BRANCH_COORDS: Record<number, { lat: number; lng: number }> = {
+  2712: { lat: 29.2677, lng: 47.9543 },
+  3285: { lat: 29.3333, lng: 48.0833 },
+};
+
+const FALLBACK_COORDS = { lat: 29.2677, lng: 47.9543 };
 
 export default function CheckoutConfirmationPage() {
   const router = useRouter();
@@ -39,6 +48,8 @@ export default function CheckoutConfirmationPage() {
   const t = getMsg;
   const items = useCart((s) => s.items);
   const total = useCart((s) => s.total());
+  const setQty = useCart((s) => s.setQty);
+  const removeItem = useCart((s) => s.remove);
 
   const mode = useDelivery((s) => s.mode);
   const branchId = useDelivery((s) => s.branchId);
@@ -58,6 +69,11 @@ export default function CheckoutConfirmationPage() {
   const payment = useDelivery((s) => s.payment);
   const setPayment = useDelivery((s) => s.setPayment);
 
+  const [editing, setEditing] = useState<{ key: string; qty: number } | null>(null);
+  const [draftQty, setDraftQty] = useState(1);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [placing, setPlacing] = useState(false);
+
   const fee = useMemo(() => {
     if (mode !== "delivery" || branchId == null || areaId == null) return 0;
     const a = getBranchAreas(branchId).find((x) => x.id === areaId);
@@ -70,6 +86,31 @@ export default function CheckoutConfirmationPage() {
   const areaLabel = ar && areaArName ? areaArName : areaName;
   const branchLabel = ar && branch?.ar_name ? branch.ar_name : branch?.name;
 
+  const coords = useMemo(() => {
+    if (mode === "pickup") {
+      const raw = branch as unknown as { lat?: string; lng?: string };
+      const lat = raw?.lat ? parseFloat(raw.lat) : NaN;
+      const lng = raw?.lng ? parseFloat(raw.lng) : NaN;
+      if (
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        lat > 28.5 &&
+        lat < 30.5 &&
+        lng > 46 &&
+        lng < 49.5
+      ) {
+        return { lat, lng };
+      }
+      return BRANCH_COORDS[branchId ?? -1] ?? FALLBACK_COORDS;
+    }
+    return getAreaLatLng(areaId);
+  }, [mode, branchId, areaId, branch]);
+
+  const directionsUrl =
+    coords != null
+      ? `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`
+      : undefined;
+
   if (items.length === 0) {
     return (
       <>
@@ -81,12 +122,36 @@ export default function CheckoutConfirmationPage() {
     );
   }
 
-  const placeOrder = () => {
-    if (!payment) return;
+  const placeOrder = async () => {
+    if (!payment || placing) return;
+    setPlacing(true);
+    setPayError(null);
     const orderNo = Math.floor(100000 + Math.random() * 900000);
-    const q = `?order=${orderNo}`;
-    if (payment === "cash") router.push(`/checkout/success${q}`);
-    else router.push(`/checkout/payment${q}`);
+    if (payment === "cash") {
+      router.push(`/checkout/success?order=${orderNo}`);
+      return;
+    }
+    try {
+      const res = await fetch("/api/knet/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: grand.toFixed(3),
+          trackId: String(orderNo),
+          lang: ar ? "ar" : "en",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.paymentUrl) {
+        window.location.href = data.paymentUrl;
+        return;
+      }
+      setPayError(data.error || "Payment could not be initiated.");
+    } catch {
+      setPayError("Payment could not be initiated.");
+    } finally {
+      setPlacing(false);
+    }
   };
 
   const sep = ar ? "، " : ", ";
@@ -109,6 +174,13 @@ export default function CheckoutConfirmationPage() {
 
   const rowIcon = "flex h-[21px] w-[21px] shrink-0 text-[#5b5b5b]";
 
+  const openDrawer = (key: string, qty: number) => {
+    setEditing({ key, qty });
+    setDraftQty(qty);
+  };
+
+  const editingItem = editing ? items.find((i) => i.key === editing.key) ?? null : null;
+
   return (
     <>
       <CheckoutHeader />
@@ -116,7 +188,9 @@ export default function CheckoutConfirmationPage() {
         <div className="h-[60px]" />
 
         <section className="mt-[30px]">
-          <p className="box-title">{t("deliveryTime")[ar ? "ar" : "en"]}</p>
+          <p className="box-title">
+            {t(mode === "pickup" ? "pickupTime" : "deliveryTime")[ar ? "ar" : "en"]}
+          </p>
           <div className="mt-[5px] flex h-[60px] items-center justify-between border-t border-b border-[#dee2e6] bg-white">
             <div className="flex items-center ps-[15px]">
               <DeliveryTimeIcon className="shrink-0" />
@@ -131,78 +205,147 @@ export default function CheckoutConfirmationPage() {
         </section>
 
         <section className="mt-[30px]">
-          <p className="box-title">{t("deliverTo")[ar ? "ar" : "en"]}</p>
+          <p className="box-title">
+            {t(mode === "pickup" ? "pickupFrom" : "deliverTo")[ar ? "ar" : "en"]}
+          </p>
           <div className="bordered mx-0 mt-[5px]">
             <div className="relative h-[138px] w-full bg-[#dbe3ec]">
-              {(() => {
-                const coords = getAreaLatLng(areaId);
-                return coords ? (
-                  <DeliveryMap
-                    lat={coords.lat}
-                    lng={coords.lng}
-                    className="absolute inset-0 h-full w-full"
-                  />
-                ) : (
-                  <LocationOnIcon className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 text-[#8f9dad]" />
-                );
-              })()}
-              <Link
-                href="/select/branch"
-                className="absolute top-0 bottom-0 left-[15px] z-[401] my-auto flex h-[35px] w-[75px] items-center justify-center border border-brand/50 bg-white pr-[15px] text-[12.25px] font-medium text-brand shadow-[1px_1px_1px_1px_rgb(184,184,184)]"
-              >
-                <span className="ml-[6px]">{t("edit")[ar ? "ar" : "en"]}</span>
-                <ChevronForwardIcon className="h-[20px] w-[20px] rotate-180" />
-              </Link>
+              {coords != null ? (
+                <DeliveryMap
+                  lat={coords.lat}
+                  lng={coords.lng}
+                  className="absolute inset-0 h-full w-full"
+                />
+              ) : (
+                <LocationOnIcon className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 text-[#8f9dad]" />
+              )}
+              {mode === "pickup" ? (
+                <a
+                  href={directionsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  dir={ar ? "rtl" : "ltr"}
+                  className={cn(
+                    "absolute top-0 bottom-0 z-[401] my-auto flex h-[35px] items-center justify-center bg-white text-[12.25px] font-medium text-[rgba(0,0,0,0.87)] shadow-[1px_1px_1px_1px_rgb(184,184,184)]",
+                    ar ? "left-[15px] w-[90px]" : "right-[15px] w-[120px]"
+                  )}
+                >
+                  <span className="mx-auto">{t("directions")[ar ? "ar" : "en"]}</span>
+                  <ChevronForwardIcon className="h-[20px] w-[20px] rotate-180" />
+                </a>
+              ) : (
+                <Link
+                  href="/select/branch"
+                  className="absolute top-0 bottom-0 left-[15px] z-[401] my-auto flex h-[35px] w-[75px] items-center justify-center border border-brand/50 bg-white pr-[15px] text-[12.25px] font-medium text-brand shadow-[1px_1px_1px_1px_rgb(184,184,184)]"
+                >
+                  <span className="ml-[6px]">{t("edit")[ar ? "ar" : "en"]}</span>
+                  <ChevronForwardIcon className="h-[20px] w-[20px] rotate-180" />
+                </Link>
+              )}
             </div>
           </div>
 
-          <Link href="/checkout/address" className="block text-black">
-            <div
-              dir={ar ? "rtl" : "ltr"}
-              className="flex items-center justify-between border-t border-[#dee2e6] bg-white py-[20px]"
-            >
-              <span className={cn("flex w-[8.33%] shrink-0", ar ? "pr-[15px]" : "pl-[15px]")}>
-                <OfficeIcon className={rowIcon} />
-              </span>
-              <span className="flex-1 text-[14px] font-normal ps-[21px]">
-                <span className="mb-[7px] block leading-[20px]">
-                  <b className="font-bold">{areaLabel}</b>
-                  {addrLine1Rest.map((p, i) => (
-                    <span key={i}>{sep + p}</span>
-                  ))}
-                </span>
-                {addrLine2 && <span className="block leading-[20px]">{addrLine2}</span>}
-              </span>
-              <span className={cn("flex w-[8.33%] shrink-0 justify-end", ar ? "pe-[11px]" : "pe-[17px]")}>
-                <EditIcon className={rowIcon} />
-              </span>
-            </div>
-          </Link>
+          {mode === "pickup" ? (
+            <>
+              <Link href="/select/branch" className="block text-black">
+                <div
+                  dir={ar ? "rtl" : "ltr"}
+                  className="flex items-center justify-between border-t border-[#dee2e6] bg-white py-[20px]"
+                >
+                  <span className={cn("flex w-[8.33%] shrink-0", ar ? "pr-[15px]" : "pl-[15px]")}>
+                    <OfficeIcon className={rowIcon} />
+                  </span>
+                  <span className="flex-1 text-[16px] font-normal ps-[21px]">{branchLabel}</span>
+                  <span
+                    className={cn("flex w-[8.33%] shrink-0 justify-end", ar ? "pe-[11px]" : "pe-[17px]")}
+                  >
+                    <EditIcon className={rowIcon} />
+                  </span>
+                </div>
+              </Link>
 
-          <Link href="/checkout/details" className="block text-black">
-            <div
-              dir={ar ? "rtl" : "ltr"}
-              className="flex min-h-[22px] items-center justify-between border-b border-[#dee2e6] bg-white pb-[21px]"
-            >
-              <span className={cn("flex w-[8.33%] shrink-0", ar ? "pr-[15px]" : "pl-[15px]")}>
-                <PersonIcon className={rowIcon} />
-              </span>
-              <span className="flex-1 text-[14px] font-normal ps-[21px]">
-                {name}
-                {phone && (
-                  <>
-                    <span className="mx-1">, </span>
-                    <b className="font-bold" dir="ltr">
-                      {phone}
-                    </b>
-                  </>
-                )}
-              </span>
-              <span className={cn("flex w-[8.33%] shrink-0 justify-end", ar ? "pe-[11px]" : "pe-[17px]")}>
-                <EditIcon className={rowIcon} />
-              </span>
-            </div>
-          </Link>
+              <Link href="/checkout/details" className="block text-black">
+                <div
+                  dir={ar ? "rtl" : "ltr"}
+                  className="flex min-h-[22px] items-center justify-between border-b border-[#dee2e6] bg-white pb-[21px]"
+                >
+                  <span className={cn("flex w-[8.33%] shrink-0", ar ? "pr-[15px]" : "pl-[15px]")}>
+                    <PersonIcon className={rowIcon} />
+                  </span>
+                  <span className="flex-1 text-[14px] font-normal ps-[21px]">
+                    {name}
+                    {phone && (
+                      <>
+                        <span className="mx-1">, </span>
+                        <b className="font-bold" dir="ltr">
+                          {phone}
+                        </b>
+                      </>
+                    )}
+                  </span>
+                  <span
+                    className={cn("flex w-[8.33%] shrink-0 justify-end", ar ? "pe-[11px]" : "pe-[17px]")}
+                  >
+                    <EditIcon className={rowIcon} />
+                  </span>
+                </div>
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href="/checkout/address" className="block text-black">
+                <div
+                  dir={ar ? "rtl" : "ltr"}
+                  className="flex items-center justify-between border-t border-[#dee2e6] bg-white py-[20px]"
+                >
+                  <span className={cn("flex w-[8.33%] shrink-0", ar ? "pr-[15px]" : "pl-[15px]")}>
+                    <OfficeIcon className={rowIcon} />
+                  </span>
+                  <span className="flex-1 text-[14px] font-normal ps-[21px]">
+                    <span className="mb-[7px] block leading-[20px]">
+                      <b className="font-bold">{areaLabel}</b>
+                      {addrLine1Rest.map((p, i) => (
+                        <span key={i}>{sep + p}</span>
+                      ))}
+                    </span>
+                    {addrLine2 && <span className="block leading-[20px]">{addrLine2}</span>}
+                  </span>
+                  <span
+                    className={cn("flex w-[8.33%] shrink-0 justify-end", ar ? "pe-[11px]" : "pe-[17px]")}
+                  >
+                    <EditIcon className={rowIcon} />
+                  </span>
+                </div>
+              </Link>
+
+              <Link href="/checkout/details" className="block text-black">
+                <div
+                  dir={ar ? "rtl" : "ltr"}
+                  className="flex min-h-[22px] items-center justify-between border-b border-[#dee2e6] bg-white pb-[21px]"
+                >
+                  <span className={cn("flex w-[8.33%] shrink-0", ar ? "pr-[15px]" : "pl-[15px]")}>
+                    <PersonIcon className={rowIcon} />
+                  </span>
+                  <span className="flex-1 text-[14px] font-normal ps-[21px]">
+                    {name}
+                    {phone && (
+                      <>
+                        <span className="mx-1">, </span>
+                        <b className="font-bold" dir="ltr">
+                          {phone}
+                        </b>
+                      </>
+                    )}
+                  </span>
+                  <span
+                    className={cn("flex w-[8.33%] shrink-0 justify-end", ar ? "pe-[11px]" : "pe-[17px]")}
+                  >
+                    <EditIcon className={rowIcon} />
+                  </span>
+                </div>
+              </Link>
+            </>
+          )}
         </section>
 
         <section className="mt-[30px]">
@@ -219,7 +362,16 @@ export default function CheckoutConfirmationPage() {
               return (
                 <div
                   key={it.key}
-                  className="-mx-[15px] flex text-[14px] font-bold text-[rgba(0,0,0,0.87)]"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDrawer(it.key, it.qty)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openDrawer(it.key, it.qty);
+                    }
+                  }}
+                  className="-mx-[15px] flex cursor-pointer text-[14px] font-bold text-[rgba(0,0,0,0.87)]"
                 >
                   <span className="w-[16.67%] shrink-0 px-[15px] my-[7px] text-center text-brand leading-[20px]">
                     <span dir={ar ? "rtl" : "ltr"}>{it.qty}x</span>
@@ -238,15 +390,15 @@ export default function CheckoutConfirmationPage() {
                       "w-[8.33%] shrink-0 my-[7px] leading-[20px]",
                       ar ? "text-right" : "text-left"
                     )}
-                   >
-                     {price}
-                   </span>
-                   <span
-                     className={cn(
-                       "w-[8.33%] shrink-0 my-[7px] leading-[20px]",
-                       ar ? "text-left" : "text-right"
-                      )}
-                    >
+                  >
+                    {price}
+                  </span>
+                  <span
+                    className={cn(
+                      "w-[8.33%] shrink-0 my-[7px] leading-[20px]",
+                      ar ? "text-left" : "text-right"
+                    )}
+                  >
                     {currency}
                   </span>
                 </div>
@@ -262,26 +414,51 @@ export default function CheckoutConfirmationPage() {
               {paymentMethods.map((p) => {
                 const active = payment === p.key;
                 return (
-                  <li key={p.key} className="flex h-[51px] items-center px-[16px]">
-                    <button type="button" onClick={() => setPayment(p.key)} className="flex items-center">
-                      <span
-                        className={cn(
-                          "flex h-[21px] w-[21px] items-center justify-center rounded-full border-2",
-                          active ? "border-brand" : "border-[#808080]"
-                        )}
-                      >
-                        {active && <span className="h-3 w-3 rounded-full bg-brand" />}
-                      </span>
-                      <span className="ms-[9px] flex h-6 items-center">
-                        <p.Icon className="h-6 w-auto" />
-                      </span>
-                      <span className="ms-[9px] text-[14px] leading-[28px] text-[rgba(0,0,0,0.87)]">
-                        {t(p.msg)[ar ? "ar" : "en"]}
-                      </span>
-                    </button>
+                  <li
+                    key={p.key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setPayment(p.key)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setPayment(p.key);
+                      }
+                    }}
+                    dir={ar ? "rtl" : "ltr"}
+                    className="flex h-[51px] cursor-pointer items-center px-[16px] hover:bg-black/[0.04]"
+                  >
+                    <span className="flex h-[39px] w-[39px] shrink-0 items-center justify-center">
+                      {active ? (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-[21px] w-[21px] text-brand"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M16.59 7.58L10 14.17l-3.59-3.58L5 12l5 5 8-8zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-[21px] w-[21px] text-[#808080]"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"
+                          />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="text-[14px] leading-[28px] text-[rgba(0,0,0,0.87)]">
+                      {t(p.msg)[ar ? "ar" : "en"]}
+                    </span>
                     <div className="flex-1" />
-                    <span className="flex shrink-0 items-center pl-2">
-                      <ChevronForwardIcon className="h-[30px] w-[30px] rotate-180 text-[rgba(0,0,0,0.87)]" />
+                    <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center">
+                      <p.Icon className="h-[30px] w-[30px]" />
                     </span>
                   </li>
                 );
@@ -300,26 +477,123 @@ export default function CheckoutConfirmationPage() {
         <div
           dir={ar ? "rtl" : "ltr"}
           className={cn(
-            "fixed bottom-[55px] z-[1000] w-full border-t border-[#dee2e6] bg-white py-[7px] md:w-[41.6%]",
+            "fixed bottom-[55px] z-[1000] w-full border-t border-[#dee2e6] bg-white py-2 md:w-[41.6%]",
             ar ? "right-0" : "left-0"
           )}
         >
           {[
-            { label: t("subtotal")[ar ? "ar" : "en"], value: fmtPrice(total, lang) },
-            { label: t("deliveryFees")[ar ? "ar" : "en"], value: mode === "delivery" ? fmtPrice(fee, lang) : "-" },
-            { label: t("total")[ar ? "ar" : "en"], value: fmtPrice(grand, lang) },
-          ].map((row, i) => (
-              <div key={i} className={cn("flex h-[23px] items-center justify-between px-[15px]", i < 2 && "mb-[3.5px]")}>
-              <span className="text-[14px] text-[rgba(0,0,0,0.87)]">{row.label}</span>
-              <span className="text-[14px] text-[rgba(0,0,0,0.87)]">{row.value}</span>
+            { label: t("subtotal")[ar ? "ar" : "en"], value: fmtPrice(total, lang), bold: false },
+            ...(mode === "delivery"
+              ? [{ label: t("deliveryFees")[ar ? "ar" : "en"], value: fmtPrice(fee, lang), bold: false }]
+              : []),
+            { label: t("total")[ar ? "ar" : "en"], value: fmtPrice(grand, lang), bold: true },
+          ].map((row, i, rows) => (
+            <div
+              key={i}
+              className={cn(
+                "flex h-[23px] items-center justify-between px-[16px]",
+                i < rows.length - 1 && "mb-[3.5px]"
+              )}
+            >
+              <span
+                className={cn(
+                  "text-[16px] text-[rgba(0,0,0,0.87)]",
+                  row.bold && "font-semibold"
+                )}
+              >
+                {row.label}
+              </span>
+              <span
+                className={cn(
+                  "text-[16px] text-[rgba(0,0,0,0.87)]",
+                  row.bold && "font-semibold"
+                )}
+              >
+                {row.value}
+              </span>
             </div>
           ))}
         </div>
 
         <div className="h-[190px]" />
 
+        {payError && (
+          <div className="fixed inset-x-0 bottom-[104px] z-[999] mx-auto max-w-[560px] px-4">
+            <div className="rounded-[6px] border border-[#ff6600]/40 bg-[#fff5ec] px-4 py-2 text-[13px] text-[#b34700]">
+              {payError}
+            </div>
+          </div>
+        )}
+
         <CheckoutActionBar label={t("placeOrder")[ar ? "ar" : "en"]} onClick={placeOrder} />
       </div>
+
+      {editingItem && (
+        <div className="fixed inset-0 z-[1100]" dir={ar ? "rtl" : "ltr"}>
+          <div className="absolute inset-0 bg-black/50" onClick={() => setEditing(null)} />
+          <div className="absolute bottom-0 left-0 right-0 mx-auto bg-[#f4f5f5] pb-[24px] pt-[16px] text-center md:w-[41.6%]">
+            <h2 className="mt-[16px] mb-0 text-[24px] font-bold text-[rgba(0,0,0,0.87)]">
+              {ar && editingItem.ar_name ? editingItem.ar_name : editingItem.name}
+            </h2>
+            <h4
+              className="mt-[8px] mb-0 cursor-pointer text-[15px] font-bold text-[#ff6600]"
+              onClick={() => {
+                setEditing(null);
+                router.push(`/product/${editingItem.categorySlug}/${editingItem.slug}`);
+              }}
+            >
+              {t("customize")[ar ? "ar" : "en"]}
+            </h4>
+            <hr className="my-[16px] border-[#d8d8d8]" />
+            <div className="flex w-full items-center justify-center gap-[40px]">
+              <button
+                type="button"
+                onClick={() => setDraftQty((q) => Math.max(1, q - 1))}
+                aria-label="Decrease quantity"
+              >
+                <MinusIcon />
+              </button>
+              <h1 className="m-0 min-w-[40px] text-[28px] font-bold leading-[1.3] text-[rgba(0,0,0,0.87)]">
+                {draftQty}
+              </h1>
+              <button
+                type="button"
+                onClick={() => setDraftQty((q) => q + 1)}
+                aria-label="Increase quantity"
+              >
+                <PlusIcon />
+              </button>
+            </div>
+            <h5 className="mt-[10px] mb-0 text-[14px] font-bold text-[#6c757d]">
+              {t("pricePrefix")[ar ? "ar" : "en"]}
+              {fmtPrice(editingItem.price * draftQty, lang)}
+            </h5>
+            <hr className="my-[16px] border-[#d8d8d8]" />
+            <div className="flex items-center justify-center gap-[30px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setQty(editingItem.key, draftQty);
+                  setEditing(null);
+                }}
+                className="text-[12.25px] font-medium tracking-[0.4px] text-[#2e7d32]"
+              >
+                {t("save")[ar ? "ar" : "en"]}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  removeItem(editingItem.key);
+                  setEditing(null);
+                }}
+                className="text-[12.25px] font-medium tracking-[0.4px] text-[#d32f2f]"
+              >
+                {t("delete")[ar ? "ar" : "en"]}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

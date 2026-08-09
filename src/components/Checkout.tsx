@@ -29,14 +29,16 @@ export function CheckoutHeader() {
           className={cn("h-[21px] w-[21px] text-[rgba(0,0,0,0.87)]", !ar && "-scale-x-100")}
         />
       </button>
-      <button
-        type="button"
-        onClick={() => setLang(ar ? "en" : "ar")}
-        aria-label="Toggle language"
-        className="flex h-[50px] w-[42px] shrink-0 items-center justify-center rounded-[4px] text-[20px] font-medium text-black"
-      >
-        {ar ? "En" : "ع"}
-      </button>
+      {!desktop && (
+        <button
+          type="button"
+          onClick={() => setLang(ar ? "en" : "ar")}
+          aria-label="Toggle language"
+          className="flex h-[50px] w-[42px] shrink-0 items-center justify-center rounded-[4px] text-[20px] font-medium text-black"
+        >
+          {ar ? "En" : "ع"}
+        </button>
+      )}
     </div>
   );
 

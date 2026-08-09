@@ -20,13 +20,17 @@ export default function CheckoutDetailsPage() {
   const items = useCart((s) => s.items);
   const storedName = useDelivery((s) => s.name);
   const storedPhone = useDelivery((s) => s.phone);
-  const mode = useDelivery((s) => s.mode);
-  const branchName = useDelivery((s) => s.branchName);
-  const branchArName = useDelivery((s) => s.branchArName);
   const setContact = useDelivery((s) => s.setContact);
 
+  const normalizePhone = (s: string) => {
+    const digits = s.replace(/\D/g, "").replace(/^965/, "");
+    return `+965${digits}`;
+  };
+
   const [name, setName] = useState(storedName);
-  const [phone, setPhone] = useState(storedPhone);
+  const [phone, setPhone] = useState(() =>
+    storedPhone ? normalizePhone(storedPhone) : "+965"
+  );
   const [err, setErr] = useState("");
 
   // Redirect if already have name and phone
@@ -48,14 +52,15 @@ export default function CheckoutDetailsPage() {
   }
 
   const next = () => {
-    if (!name.trim() || !phone.trim()) {
+    const phoneDigits = phone.replace(/\D/g, "").replace(/^965/, "");
+    if (!name.trim() || phoneDigits.length < 8) {
       setErr(
         ar ? "يرجى تعبئة الاسم ورقم الهاتف" : "Please fill in your name and phone number"
       );
       return;
     }
     setErr("");
-    setContact(name.trim(), phone.trim());
+    setContact(name.trim(), phone);
     router.push("/checkout/address");
   };
 
@@ -73,12 +78,6 @@ export default function CheckoutDetailsPage() {
         <p className="mt-[14px] mb-0 text-[22px] font-bold leading-[31.4px] text-[#6c757d]">
           {t("contactInfo")[ar ? "ar" : "en"]}
         </p>
-        {mode === "pickup" && (branchName || branchArName) && (
-          <div className="mt-4 px-[21px] text-start text-[14px] text-[#666]">
-            <p className="font-bold text-ink mb-1">{ar ? "موقع الاستلام" : "Pickup Location"}</p>
-            <p className="text-brand font-bold">{ar ? (branchArName || branchName) : (branchName || branchArName)}</p>
-          </div>
-        )}
         <div className="px-[21px] text-start">
           <div className="mt-[56px]">
             <UnderlineField
@@ -88,12 +87,12 @@ export default function CheckoutDetailsPage() {
             />
           </div>
           <div className="mt-[42px]">
-            <UnderlinePhoneField
-              label={`${t("phoneNumber")[ar ? "ar" : "en"]} *`}
-              value={phone}
-              onChange={setPhone}
-              placeholder="+1 (702) 123-4567"
-            />
+             <UnderlinePhoneField
+               label={`${t("phoneNumber")[ar ? "ar" : "en"]} *`}
+               value={phone}
+               onChange={setPhone}
+               placeholder="+1 (702) 123-4567"
+             />
           </div>
           {err && <p className="mt-3 text-start text-[12px] text-red-500">{err}</p>}
         </div>

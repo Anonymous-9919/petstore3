@@ -51,6 +51,8 @@ export default function CheckoutConfirmationPage() {
   const street = useDelivery((s) => s.street);
   const building = useDelivery((s) => s.building);
   const avenue = useDelivery((s) => s.avenue);
+  const floor = useDelivery((s) => s.floor);
+  const apartment = useDelivery((s) => s.apartment);
   const paci = useDelivery((s) => s.paci);
   const additional = useDelivery((s) => s.additional);
   const payment = useDelivery((s) => s.payment);
@@ -88,16 +90,15 @@ export default function CheckoutConfirmationPage() {
   };
 
   const sep = ar ? "، " : ", ";
-  const addrLine1 = [
-    areaLabel,
-    block && `${ar ? "قطعة" : "Block"} ${block}`,
-    street && `${ar ? "شارع" : "Street"} ${street}`,
-  ]
-    .filter(Boolean)
-    .join(sep);
+  const addrLine1Rest = [
+    block && `${ar ? "قطعة" : "block"} ${block}`,
+    street && `${ar ? "شارع" : "Str."} ${street}`,
+  ].filter(Boolean);
   const addrLine2 = [
     building && `${ar ? "مبنى" : "Building"} ${building}`,
     avenue && `${ar ? "جادة" : "Avenue"} ${avenue}`,
+    floor && `${ar ? "طابق" : "Floor"} ${floor}`,
+    apartment && `${ar ? "شقة" : "Apartment"} ${apartment}`,
     paci && `${ar ? "الرقم المدني" : "Civil number"} ${paci}`,
     additional,
   ]
@@ -160,28 +161,33 @@ export default function CheckoutConfirmationPage() {
               dir={ar ? "rtl" : "ltr"}
               className="flex items-center justify-between border-t border-[#dee2e6] bg-white py-[20px]"
             >
-              <span className="flex w-[8.33%] shrink-0 justify-center">
+              <span className={cn("flex w-[8.33%] shrink-0", ar ? "pr-[15px]" : "pl-[15px]")}>
                 <OfficeIcon className={rowIcon} />
               </span>
-              <span className="flex-1 text-[14px] font-normal">
-                <span className="mb-[7px] block leading-[20px]">{addrLine1}</span>
+              <span className="flex-1 text-[14px] font-normal ps-[21px]">
+                <span className="mb-[7px] block leading-[20px]">
+                  <b className="font-bold">{areaLabel}</b>
+                  {addrLine1Rest.map((p, i) => (
+                    <span key={i}>{sep + p}</span>
+                  ))}
+                </span>
                 {addrLine2 && <span className="block leading-[20px]">{addrLine2}</span>}
               </span>
-              <span className="flex w-[8.33%] shrink-0 justify-end pe-[10px]">
+              <span className={cn("flex w-[8.33%] shrink-0 justify-end", ar ? "pe-[11px]" : "pe-[17px]")}>
                 <EditIcon className={rowIcon} />
               </span>
             </div>
           </Link>
 
           <Link href="/checkout/details" className="block text-black">
-              <div
+            <div
               dir={ar ? "rtl" : "ltr"}
               className="flex min-h-[22px] items-center justify-between border-b border-[#dee2e6] bg-white pb-[21px]"
             >
-              <span className="flex w-[8.33%] shrink-0 justify-center">
+              <span className={cn("flex w-[8.33%] shrink-0", ar ? "pr-[15px]" : "pl-[15px]")}>
                 <PersonIcon className={rowIcon} />
               </span>
-              <span className="flex-1 text-[14px] font-normal">
+              <span className="flex-1 text-[14px] font-normal ps-[21px]">
                 {name}
                 {phone && (
                   <>
@@ -192,7 +198,7 @@ export default function CheckoutConfirmationPage() {
                   </>
                 )}
               </span>
-              <span className="flex w-[8.33%] shrink-0 justify-end pe-[10px]">
+              <span className={cn("flex w-[8.33%] shrink-0 justify-end", ar ? "pe-[11px]" : "pe-[17px]")}>
                 <EditIcon className={rowIcon} />
               </span>
             </div>

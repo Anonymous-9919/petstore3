@@ -1,7 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { deliveryData, storeData } from "@/data/loader";
-
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -21,6 +20,101 @@ export function getAreaLatLng(
   const lng = parseFloat(a.area_lng);
   if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
   return { lat, lng };
+}
+
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const R = 6371e3;
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const Δφ = toRad(lat2 - lat1);
+  const Δλ = toRad(lng2 - lng1);
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export interface NearestArea {
+  id: number;
+  area_id: number;
+  branch: number;
+  name: string;
+  ar_name: string;
+  price: number;
+  lat: number;
+  lng: number;
+}
+
+export function nearestAreaByLatLng(
+  lat: number,
+  lng: number,
+  branchId?: number | null
+): NearestArea | null {
+  const charges = (
+    deliveryData as unknown as {
+      branch_delivery_charges: Array<{
+        area_id: number;
+        area_lat?: string;
+        area_lng?: string;
+        name: string;
+        ar_name: string;
+        id: number;
+        branch: number;
+        price: number;
+      }>;
+    }
+  ).branch_delivery_charges;
+  let candidates = charges;
+  if (branchId != null) {
+    const scoped = charges.filter((c) => c.branch === branchId);
+    if (scoped.length) candidates = scoped;
+  }
+  let best: NearestArea | null = null;
+  let bestDist = Infinity;
+  for (const c of candidates) {
+    if (!c.area_lat || !c.area_lng) continue;
+    const clat = parseFloat(c.area_lat);
+    const clng = parseFloat(c.area_lng);
+    if (Number.isNaN(clat) || Number.isNaN(clng)) continue;
+    const dist = haversine(lat, lng, clat, clng);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = {
+        id: c.id,
+        area_id: c.area_id,
+        branch: c.branch,
+        name: c.name,
+        ar_name: c.ar_name,
+        price: c.price,
+        lat: clat,
+        lng: clng,
+      };
+    }
+  }
+  return best;
+}
+
+export async function reverseGeocode(
+  lat: number,
+  lng: number
+): Promise<{ display_name?: string; house_number?: string; road?: string } | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18`,
+      {
+        headers: { "User-Agent": "petstore3/1.0 (+https://petstorekuwait.com)" },
+      }
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as {
+      display_name?: string;
+      house_number?: string;
+      road?: string;
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function fmtPrice(price: number, lang: "ar" | "en"): string {

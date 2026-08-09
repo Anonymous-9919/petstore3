@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useLang } from "@/lib/state";
 import { cn } from "@/lib/utils";
 import { BackArrowIcon } from "@/components/MuiIcons";
@@ -97,14 +98,21 @@ export function UnderlineField({
 }) {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
+  const [focused, setFocused] = useState(false);
+  const shrunk = focused || value.length > 0;
+
   return (
     <div className="relative h-[46px] w-full">
       <label
         className={cn(
-          "absolute top-0 text-[20px] leading-[20px] text-[#6c757d]",
+          "pointer-events-none absolute top-0 text-[#6c757d]",
+          shrunk ? "text-[20px] leading-[20px]" : "text-[14px] leading-[20px]",
           ar ? "right-0 origin-top-right" : "left-0 origin-top-left"
         )}
-        style={{ transform: "translateY(1.5px) scale(0.75)" }}
+        style={{
+          transform: shrunk ? "translateY(1.5px) scale(0.75)" : "translateY(24px) scale(1)",
+          transition: "color 200ms cubic-bezier(0, 0, 0.2, 1), transform 200ms cubic-bezier(0, 0, 0.2, 1)",
+        }}
       >
         {label}
       </label>
@@ -113,6 +121,8 @@ export function UnderlineField({
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           dir={dir}
           inputMode={inputMode}
           placeholder={placeholder}
@@ -137,14 +147,27 @@ export function UnderlinePhoneField({
 }) {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
+
+  const handleChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").replace(/^965/, "");
+    onChange(`+965${digits}`);
+  };
+
+  const [focused, setFocused] = useState(false);
+  const shrunk = focused || value.length > 0;
+
   return (
     <div className="relative h-[46px] w-full">
       <label
         className={cn(
-          "absolute top-0 text-[20px] leading-[20px] text-[#6c757d]",
+          "pointer-events-none absolute top-0 text-[#6c757d]",
+          shrunk ? "text-[20px] leading-[20px]" : "text-[14px] leading-[20px]",
           ar ? "right-0 origin-top-right" : "left-0 origin-top-left"
         )}
-        style={{ transform: "translateY(1.5px) scale(0.75)" }}
+        style={{
+          transform: shrunk ? "translateY(1.5px) scale(0.75)" : "translateY(24px) scale(1)",
+          transition: "color 200ms cubic-bezier(0, 0, 0.2, 1), transform 200ms cubic-bezier(0, 0, 0.2, 1)",
+        }}
       >
         {label}
       </label>
@@ -163,7 +186,9 @@ export function UnderlinePhoneField({
         <input
           type="tel"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           dir="ltr"
           inputMode="tel"
           placeholder={placeholder}

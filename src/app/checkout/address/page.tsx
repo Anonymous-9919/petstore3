@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -18,7 +18,7 @@ import {
   StorefrontIcon,
 } from "@/components/MuiIcons";
 import { getMsg } from "@/lib/i18n";
-import { useDelivery, useLang } from "@/lib/state";
+import { useDelivery, useLang, useHasMounted } from "@/lib/state";
 import { cn, getAreaLatLng } from "@/lib/utils";
 import DeliveryMap from "@/components/DeliveryMap";
 
@@ -46,6 +46,8 @@ export default function CheckoutAddressPage() {
   const street = useDelivery((s) => s.street);
   const building = useDelivery((s) => s.building);
   const avenue = useDelivery((s) => s.avenue);
+  const floor = useDelivery((s) => s.floor);
+  const apartment = useDelivery((s) => s.apartment);
   const paci = useDelivery((s) => s.paci);
   const additional = useDelivery((s) => s.additional);
   const setAddress = useDelivery((s) => s.setAddress);
@@ -56,6 +58,25 @@ export default function CheckoutAddressPage() {
 
   const [err, setErr] = useState("");
 
+  const mounted = useHasMounted();
+  const [userLat, setUserLat] = useState<number | null>(null);
+  const [userLng, setUserLng] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!mounted || mode !== "delivery" || !("geolocation" in navigator)) return;
+    const w = navigator.geolocation;
+    w.getCurrentPosition(
+      (pos) => {
+        setUserLat(pos.coords.latitude);
+        setUserLng(pos.coords.longitude);
+      },
+      () => {
+        /* permission denied - keep manual selection */
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
+    );
+  }, [mounted, mode]);
+
   const areaLabel = ar && areaArName ? areaArName : areaName;
   const branchLabel = ar && branchArName ? branchArName : branchName;
 
@@ -65,7 +86,10 @@ export default function CheckoutAddressPage() {
         setErr(ar ? "يرجى اختيار منطقة التوصيل" : "Please select a delivery area");
         return;
       }
-      if (!block.trim() || !street.trim() || !building.trim()) {
+      const missing =
+        !block.trim() || !street.trim() || !building.trim() ||
+        (addressType === "office" && (!floor.trim() || !apartment.trim()));
+      if (missing) {
         setErr(
           ar ? "يرجى تعبئة حقول العنوان المطلوبة" : "Please fill in the required address fields"
         );
@@ -82,12 +106,15 @@ export default function CheckoutAddressPage() {
   };
 
   const setField = (
-    k: "block" | "street" | "building" | "avenue" | "paci" | "additional",
+    k: "block" | "street" | "building" | "avenue" | "floor" | "apartment" | "paci" | "additional",
     v: string
   ) => setAddress({ [k]: v } as Parameters<typeof setAddress>[0]);
 
-  const required = (key: "block" | "street" | "building") =>
-    `${t(key)[ar ? "ar" : "en"]} *`;
+  const isAptOrOffice = addressType === "apartment" || addressType === "office";
+
+  const buildingLabel = `${(isAptOrOffice ? t("buildingName") : t("building"))[ar ? "ar" : "en"]} *`;
+  const floorLabel = `${t("floor")[ar ? "ar" : "en"]}${addressType === "office" ? " *" : ""}`;
+  const aptLabel = `${(addressType === "office" ? t("officeNum") : t("apartmentNum"))[ar ? "ar" : "en"]}${addressType === "office" ? " *" : ""}`;
 
   return (
     <>
@@ -152,14 +179,21 @@ export default function CheckoutAddressPage() {
               <div className="relative h-[90px] w-full bg-[#dbe3ec]">
                 {(() => {
                   const coords = getAreaLatLng(areaId);
-                  return coords ? (
+                  const hasArea = !!coords;
+                  const hasUser = typeof userLat === "number" && typeof userLng === "number";
+                  if (!hasArea && !hasUser) {
+                    return (
+                      <LocationOnIcon className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 text-[#8f9dad]" />
+                    );
+                  }
+                  return (
                     <DeliveryMap
-                      lat={coords.lat}
-                      lng={coords.lng}
+                      lat={coords?.lat}
+                      lng={coords?.lng}
+                      userLat={userLat}
+                      userLng={userLng}
                       className="absolute inset-0 h-full w-full"
                     />
-                  ) : (
-                    <LocationOnIcon className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 text-[#8f9dad]" />
                   );
                 })()}
                 <Link
@@ -200,20 +234,20 @@ export default function CheckoutAddressPage() {
               </div>
               <div className="mt-[12px] text-start pb-[10px]">
                 <UnderlineField
-                  label={required("block")}
+                  label={`${t("block")[ar ? "ar" : "en"]} *`}
                   value={block}
                   onChange={(v) => setField("block", v)}
                 />
                 <div className="mt-[20px]">
                   <UnderlineField
-                    label={required("street")}
+                    label={`${t("street")[ar ? "ar" : "en"]} *`}
                     value={street}
                     onChange={(v) => setField("street", v)}
                   />
                 </div>
                 <div className="mt-[20px]">
                   <UnderlineField
-                    label={required("building")}
+                    label={buildingLabel}
                     value={building}
                     onChange={(v) => setField("building", v)}
                   />
@@ -225,6 +259,24 @@ export default function CheckoutAddressPage() {
                     onChange={(v) => setField("avenue", v)}
                   />
                 </div>
+                {isAptOrOffice && (
+                  <>
+                    <div className="mt-[20px]">
+                      <UnderlineField
+                        label={floorLabel}
+                        value={floor}
+                        onChange={(v) => setField("floor", v)}
+                      />
+                    </div>
+                    <div className="mt-[20px]">
+                      <UnderlineField
+                        label={aptLabel}
+                        value={apartment}
+                        onChange={(v) => setField("apartment", v)}
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="mt-[20px]">
                   <UnderlineField
                     label={t("paci")[ar ? "ar" : "en"]}

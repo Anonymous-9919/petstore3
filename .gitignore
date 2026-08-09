@@ -12,3 +12,4 @@ tsconfig.tsbuildinfo
 _qa/
 .playwright-mcp/
 *.png
+dev-server.log

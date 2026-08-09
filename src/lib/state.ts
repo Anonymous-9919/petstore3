@@ -76,6 +76,8 @@ interface DeliveryState {
   street: string;
   building: string;
   avenue: string;
+  floor: string;
+  apartment: string;
   paci: string;
   additional: string;
   payment: string;
@@ -90,6 +92,8 @@ interface DeliveryState {
     street?: string;
     building?: string;
     avenue?: string;
+    floor?: string;
+    apartment?: string;
     paci?: string;
     additional?: string;
   }) => void;
@@ -204,6 +208,8 @@ export const useDelivery = create<DeliveryState>()(
       street: "",
       building: "",
       avenue: "",
+      floor: "",
+      apartment: "",
       paci: "",
       additional: "",
       payment: "cash",
@@ -225,6 +231,8 @@ export const useDelivery = create<DeliveryState>()(
           street: a.street ?? s.street,
           building: a.building ?? s.building,
           avenue: a.avenue ?? s.avenue,
+          floor: a.floor ?? s.floor,
+          apartment: a.apartment ?? s.apartment,
           paci: a.paci ?? s.paci,
           additional: a.additional ?? s.additional,
         })),

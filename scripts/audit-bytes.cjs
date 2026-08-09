@@ -1,0 +1,11 @@
+const fs = require("fs");
+const buf = fs.readFileSync("src/data/products.json");
+const needle = Buffer.from("moochie-pat", "latin1");
+const idx = buf.indexOf(needle);
+console.log("byte index:", idx);
+console.log("bytes after:", buf.slice(idx, idx + 40).toString("hex"));
+console.log("as latin1:", buf.slice(idx, idx + 30).toString("latin1"));
+console.log("as utf8:", buf.slice(idx, idx + 30).toString("utf8"));
+const idx2 = buf.indexOf(Buffer.from("padovan-granp", "latin1"));
+console.log("padovan bytes after:", buf.slice(idx2, idx2 + 45).toString("hex"));
+console.log("padovan utf8:", buf.slice(idx2, idx2 + 35).toString("utf8"));

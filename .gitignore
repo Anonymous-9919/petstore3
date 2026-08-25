@@ -12,4 +12,6 @@ tsconfig.tsbuildinfo
 _qa/
 .playwright-mcp/
 *.png
+!public/assets/
+!public/assets/**/*.png
 dev-server.log

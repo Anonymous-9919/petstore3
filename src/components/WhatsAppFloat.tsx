@@ -1,8 +1,13 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const WHATSAPP = "+96598805010";
 
 export default function WhatsAppFloat() {
+  const pathname = usePathname();
+  if (pathname.startsWith("/admin")) return null;
   return (
     <Link
       href={`https://wa.me/${WHATSAPP.replace(/\+/g, "")}`}

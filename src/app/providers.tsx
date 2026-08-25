@@ -24,6 +24,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     root.setAttribute("lang", lang);
   }, [lang]);
 
+  if (pathname.startsWith("/admin")) {
+    return <>{children}</>;
+  }
+
   return (
     <div dir="ltr" className="relative min-h-screen bg-page">
       <DesktopPanel />

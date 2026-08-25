@@ -1,41 +1,45 @@
 import { NextResponse } from "next/server";
-import { knetConfigured, knetInitiate, knetPaymentPage } from "@/lib/knet";
+import { db } from "@/server/db";
 
 export async function POST(req: Request) {
+  if (process.env.ALLOW_MOCK_PAYMENTS !== "true") {
+    return NextResponse.json({ error: "Online payment is not configured." }, { status: 503 });
+  }
   try {
     const body = (await req.json().catch(() => ({}))) as {
-      amount?: unknown;
-      trackId?: unknown;
+      orderId?: unknown;
+      trackingToken?: unknown;
       lang?: unknown;
     };
-    const amount = typeof body.amount === "string" ? body.amount : String(body.amount ?? "");
-    if (!/^\d+\.\d{3}$/.test(amount) || Number(amount) <= 0) {
-      return NextResponse.json({ error: "Invalid amount." }, { status: 400 });
+    if (typeof body.orderId !== "string" || typeof body.trackingToken !== "string") {
+      return NextResponse.json({ error: "Invalid payment request." }, { status: 400 });
     }
-    const trackId =
-      typeof body.trackId === "string" && /^[A-Za-z0-9-]+$/.test(body.trackId)
-        ? body.trackId
-        : `ORD${Date.now()}`;
-    const lang = body.lang === "ar" ? "AR" : "ENG";
-    if (!knetConfigured()) {
-      // Sandbox mode: no real KNET credentials configured.
-      // Hand the shopper off to a simulated gateway page so the full
-      // confirmation -> gateway -> success round-trip can be tested.
-      const origin = new URL(req.url).origin;
-      const sandboxUrl = `${origin}/checkout/sandbox?trackId=${encodeURIComponent(trackId)}&lang=${lang === "AR" ? "ar" : "en"}`;
-      return NextResponse.json({ paymentUrl: sandboxUrl, trackId, sandbox: true });
-    }
-    const result = await knetInitiate({ amount, trackId, lang, udf1: trackId });
-    if (result.error || !result.paymentId) {
-      return NextResponse.json(
-        { error: result.error || "KNET could not initiate the payment." },
-        { status: 502 }
-      );
-    }
-    return NextResponse.json({
-      paymentUrl: knetPaymentPage(result.paymentId),
-      trackId,
+    const order = await db.order.findFirst({
+      where: { id: body.orderId, trackingToken: body.trackingToken, status: "NEW", paymentMethod: "KNET", paymentStatus: "PENDING" },
+      include: {
+        payments: { where: { provider: "mock-knet", method: "KNET", status: "PENDING" }, orderBy: { createdAt: "desc" }, take: 1 },
+        reservations: true,
+      },
     });
+    const payment = order?.payments[0];
+    const now = new Date();
+    if (
+      !order ||
+      !payment ||
+      !payment.amount.equals(order.total) ||
+      payment.currencyCode !== order.currencyCode ||
+      order.reservations.length === 0 ||
+      order.reservations.some((reservation) => reservation.status !== "ACTIVE" || reservation.expiresAt == null || reservation.expiresAt <= now)
+    ) {
+      return NextResponse.json({ error: "This payment is no longer available." }, { status: 409 });
+    }
+    const trackId = payment.merchantTrackId;
+    const lang = body.lang === "ar" ? "AR" : "ENG";
+    // Real KNET remains intentionally unreachable until signed callback or
+    // server-inquiry verification is available. This route serves mock-knet only.
+    const origin = new URL(req.url).origin;
+    const sandboxUrl = `${origin}/checkout/sandbox?orderId=${encodeURIComponent(order.id)}&token=${encodeURIComponent(order.trackingToken)}&lang=${lang === "AR" ? "ar" : "en"}`;
+    return NextResponse.json({ paymentUrl: sandboxUrl, trackId, sandbox: true });
   } catch {
     return NextResponse.json({ error: "Server error while initiating payment." }, { status: 500 });
   }

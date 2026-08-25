@@ -1,0 +1,26 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+
+type Category = { id: string; slug: string; name: string; nameAr: string; description: string | null; descriptionAr: string | null; imagePath: string | null; sortOrder: number; isActive: boolean; archivedAt: string | null; _count: { products: number } };
+const empty = { slug: "", name: "", nameAr: "", description: "", descriptionAr: "", imagePath: "", sortOrder: 0, isActive: true };
+
+export function CategoryCatalog({ initialCategories }: { initialCategories: Category[] }) {
+  const [categories, setCategories] = useState(initialCategories);
+  const [form, setForm] = useState(empty);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const load = () => fetch("/api/admin/categories").then((r) => r.json()).then(setCategories).catch(() => setError("Unable to load categories."));
+  const change = (key: keyof typeof empty, value: string | boolean | number) => setForm((current) => ({ ...current, [key]: value }));
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setError("");
+    const response = await fetch(editing ? `/api/admin/categories/${editing}` : "/api/admin/categories", { method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, description: form.description || null, descriptionAr: form.descriptionAr || null, imagePath: form.imagePath || null }) });
+    if (!response.ok) return setError((await response.json()).error ?? "Unable to save category.");
+    setForm(empty); setEditing(null); load();
+  }
+  async function archive(id: string) { if (!confirm("Archive this category?")) return; const response = await fetch(`/api/admin/categories/${id}`, { method: "DELETE" }); if (!response.ok) return setError((await response.json()).error ?? "Unable to archive category."); load(); }
+  function edit(category: Category) { setEditing(category.id); setForm({ slug: category.slug, name: category.name, nameAr: category.nameAr, description: category.description ?? "", descriptionAr: category.descriptionAr ?? "", imagePath: category.imagePath ?? "", sortOrder: category.sortOrder, isActive: category.isActive }); }
+  return <div className="space-y-6"><form onSubmit={submit} className="grid gap-3 rounded-xl border border-black/10 bg-white p-5 md:grid-cols-2"><h2 className="md:col-span-2 text-lg font-bold">{editing ? "Edit category" : "New category"}</h2><Input label="Name (English)" value={form.name} onChange={(v) => change("name", v)} required/><Input label="Name (Arabic)" value={form.nameAr} onChange={(v) => change("nameAr", v)} required/><Input label="Slug" value={form.slug} onChange={(v) => change("slug", v)} required/><Input label="Sort order" type="number" value={form.sortOrder} onChange={(v) => change("sortOrder", Number(v))}/><Input label="Description (English)" value={form.description} onChange={(v) => change("description", v)}/><Input label="Description (Arabic)" value={form.descriptionAr} onChange={(v) => change("descriptionAr", v)}/><Input label="Image path" value={form.imagePath} onChange={(v) => change("imagePath", v)}/><label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={(e) => change("isActive", e.target.checked)}/> Active</label>{error && <p className="md:col-span-2 text-sm text-red-700">{error}</p>}<div className="md:col-span-2 flex gap-2"><button className="rounded bg-brand px-4 py-2 text-sm font-semibold text-white">{editing ? "Save category" : "Create category"}</button>{editing && <button type="button" onClick={() => { setEditing(null); setForm(empty); }} className="rounded border px-4 py-2 text-sm">Cancel</button>}</div></form><div className="overflow-x-auto rounded-xl border border-black/10 bg-white"><table className="w-full min-w-[650px] text-left text-sm"><thead className="border-b text-[#666]"><tr><th className="px-4 py-3">Category</th><th>Arabic</th><th>Products</th><th>Status</th><th className="px-4">Actions</th></tr></thead><tbody>{categories.map((category) => <tr key={category.id} className="border-b border-black/5"><td className="px-4 py-3"><b>{category.name}</b><br/><span className="text-[#666]">{category.slug}</span></td><td>{category.nameAr}</td><td>{category._count.products}</td><td>{category.archivedAt ? "Archived" : category.isActive ? "Active" : "Hidden"}</td><td className="px-4 space-x-3"><button onClick={() => edit(category)} className="font-medium text-brand">Edit</button>{!category.archivedAt && <button onClick={() => archive(category.id)} className="font-medium text-red-700">Archive</button>}</td></tr>)}{categories.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-[#666]">No categories yet.</td></tr>}</tbody></table></div></div>;
+}
+
+function Input({ label, value, onChange, type = "text", required = false }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; required?: boolean }) { return <label className="grid gap-1 text-sm font-medium">{label}<input type={type} required={required} value={value} onChange={(e) => onChange(e.target.value)} className="rounded border border-black/15 px-3 py-2 font-normal"/></label>; }

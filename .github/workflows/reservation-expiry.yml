@@ -1,0 +1,24 @@
+name: Expire payment reservations
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  expire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Expire overdue online-payment reservations
+        env:
+          RESERVATION_EXPIRY_URL: ${{ secrets.RESERVATION_EXPIRY_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$RESERVATION_EXPIRY_URL"
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --silent --show-error --retry 2 --retry-all-errors \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$RESERVATION_EXPIRY_URL"

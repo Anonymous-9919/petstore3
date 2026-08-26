@@ -21,8 +21,13 @@ export default defineConfig({
     { name: "public-mobile", use: { ...devices["Pixel 5"] }, testMatch: "**/public.spec.ts" },
     {
       name: "admin-anonymous",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: "**/admin.spec.ts",
+    },
+    {
+      name: "admin-authenticated",
       use: { ...devices["Desktop Chrome"], ...(process.env.E2E_ADMIN_STORAGE_STATE ? { storageState: process.env.E2E_ADMIN_STORAGE_STATE } : {}) },
-      testMatch: "**/admin*.spec.ts",
+      testMatch: "**/admin.auth.spec.ts",
     },
   ],
   webServer: isExternalServer ? undefined : {

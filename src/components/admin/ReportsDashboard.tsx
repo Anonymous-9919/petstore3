@@ -34,12 +34,11 @@ export function ReportsDashboard() {
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load reports."));
   }, [activeFilters]);
   useEffect(() => {
-    if (!report) return;
     const params = paramsFor(activeFilters);
     params.set("table", table);
     params.set("page", String(page));
     fetch(`/api/admin/reports?${params}`).then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load report table."))).then(setTableData).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load report table."));
-  }, [report, activeFilters, table, page]);
+  }, [activeFilters, table, page]);
 
   const products = report?.filterOptions.products.filter((product) => !filters.categoryId || product.categoryId === filters.categoryId) ?? [];
   const itemScoped = Boolean(activeFilters.productId || activeFilters.categoryId);

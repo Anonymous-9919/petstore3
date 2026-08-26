@@ -182,6 +182,16 @@ export async function GET(request?: Request) {
     }
     return NextResponse.json(data);
   }
+  if (new URL(reportRequest.url).searchParams.get("view") === "dashboard") {
+    const orderWhere = buildOrderWhere(filters);
+    const [metrics, previousMetrics, orderStatuses] = await Promise.all([
+      summary(filters),
+      summary(previousPeriod(filters)),
+      db.order.groupBy({ by: ["status"], where: orderWhere, _count: true, orderBy: { status: "asc" } }),
+    ]);
+    const statusCount = (status: string) => orderStatuses.find((item) => item.status === status)?._count ?? 0;
+    return NextResponse.json({ metrics, comparison: { metrics: previousMetrics }, fulfillment: { delivered: statusCount("DELIVERED"), refunded: statusCount("REFUNDED"), cancelled: statusCount("CANCELLED"), inProgress: ["NEW", "ASSIGNED_TO_BRANCH", "ASSIGNED_TO_DRIVER", "OUT_FOR_DELIVERY", "REFUND_REQUESTED"].reduce((total, status) => total + statusCount(status), 0) } });
+  }
   const orderWhere = buildOrderWhere(filters);
   const [metrics, previousMetrics, orderStatuses, fulfillment, inventory, branches, categories, products] = await Promise.all([
     summary(filters), summary(previousPeriod(filters)),

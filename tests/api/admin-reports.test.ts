@@ -31,10 +31,10 @@ describe("admin reports", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ metrics: { orders: 2, grossOrderTotal: "12.500", units: 4, averageOrderValue: "6.250" }, fulfillment: { delivered: 0, refunded: 0, cancelled: 0, inProgress: 2, duration: { recordedDeliveries: 0, averageHours: null } }, inventoryValuation: { status: "available", cost: "6.250", knownUnits: 5, unavailableUnits: 0 }, inventory: [{ available: 3 }] });
-    const expectedOrderWhere = { createdAt: { gte: new Date("2026-01-02T00:00:00.000Z"), lt: new Date("2026-01-06T00:00:00.000Z") }, branchId: "branch-1", items: { some: { productId: "product-1", product: { categoryId: "category-1" } } } };
+    const expectedOrderWhere = { createdAt: { gte: new Date("2026-01-02T00:00:00.000Z"), lt: new Date("2026-01-06T00:00:00.000Z") }, branchId: "branch-1", items: { some: { productId: "product-1", categoryIdSnapshot: "category-1" } } };
     expect(mocks.orderAggregate).toHaveBeenCalledWith(expect.objectContaining({ where: expectedOrderWhere }));
     expect(mocks.orderItemAggregate).toHaveBeenCalledWith(expect.objectContaining({
-      where: { productId: "product-1", product: { categoryId: "category-1" }, order: { createdAt: expectedOrderWhere.createdAt, branchId: "branch-1" } },
+      where: { productId: "product-1", categoryIdSnapshot: "category-1", order: { createdAt: expectedOrderWhere.createdAt, branchId: "branch-1" } },
       _sum: { quantity: true, lineTotal: true },
     }));
     expect(mocks.orderGroupBy).toHaveBeenCalledWith(expect.objectContaining({ where: expectedOrderWhere }));
@@ -132,7 +132,7 @@ describe("admin reports", () => {
 
     const [query, ...values] = mocks.queryRawUnsafe.mock.calls[0];
     expect(query).toContain('SUM(i."lineTotal")');
-    expect(query).toContain('scoped_product."categoryId" = $3');
+    expect(query).toContain('i."categoryIdSnapshot" = $3');
     expect(query).not.toContain('SUM(o.total)');
     expect(values).toContain("category-1");
   });

@@ -66,7 +66,8 @@ async function persistStream(input: Readable, declaredType: string | undefined) 
   }, flush(callback) { if (!checked || detectedType(head) !== type) callback(new Error("Remote image is invalid or incomplete.")); else callback(); } });
   input.pipe(validator);
   const path = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${imageTypes[type]}`;
-  return upload(path, type, validator);
+  await upload(path, type, validator);
+  return { path, contentType: type, size };
 }
 
 /** HTTPS only, with DNS pinned for every hop so redirects cannot reach private networks. */

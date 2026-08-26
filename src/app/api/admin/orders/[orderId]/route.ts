@@ -3,9 +3,9 @@ import { z } from "zod";
 import { canManage, currentUser } from "@/server/auth";
 import { notifyOrderStatusChanged } from "@/server/notifications/email";
 import { notifyStaff } from "@/server/notifications/staff";
-import { transitionCashOrder } from "@/server/services/payments";
+import { transitionCashOrder, transitionOperationalOrder } from "@/server/services/payments";
 
-const updateSchema = z.object({ status: z.enum(["ASSIGNED_TO_BRANCH", "CANCELLED"]) });
+const updateSchema = z.object({ status: z.enum(["ASSIGNED_TO_BRANCH", "CANCELLED", "ASSIGNED_TO_DRIVER", "OUT_FOR_DELIVERY", "DELIVERED"]) });
 
 export async function PATCH(request: Request, context: { params: Promise<{ orderId: string }> }) {
   const user = await currentUser();
@@ -15,11 +15,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ order
   const { orderId } = await context.params;
 
   try {
-    const result = await transitionCashOrder({
-      orderId,
-      targetStatus: parsed.data.status,
-      actorId: user.id,
-    });
+    const result = parsed.data.status === "ASSIGNED_TO_BRANCH" || parsed.data.status === "CANCELLED"
+      ? await transitionCashOrder({ orderId, targetStatus: parsed.data.status, actorId: user.id })
+      : await transitionOperationalOrder({ orderId, targetStatus: parsed.data.status, actorId: user.id });
     if (result.changed) {
       notifyOrderStatusChanged({ ...result.order, email: result.email });
       void notifyStaff({ title: "Order status updated", body: `Order ${result.order.orderNumber} is now ${result.order.status.replaceAll("_", " ")}.`, href: "/admin/orders", roles: ["OWNER", "MANAGER", "ORDER_STAFF"], excludeUserId: user.id });

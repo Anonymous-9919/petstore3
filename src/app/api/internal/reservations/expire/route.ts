@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({
+  const result = {
     batchSize,
     candidateOrders: candidates.length,
     processedOrders: expiredOrders + skippedOrders,
@@ -63,5 +63,7 @@ export async function GET(request: Request) {
     failedOrders,
     hasMore: candidates.length === batchSize,
     durationMs: Date.now() - startedAt,
-  });
+  };
+  // A partial batch must surface as a scheduler failure so the next run retries it.
+  return NextResponse.json(result, { status: failedOrders ? 503 : 200 });
 }

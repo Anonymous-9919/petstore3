@@ -6,7 +6,7 @@ import { db } from "@/server/db";
 import { notifyStaff } from "@/server/notifications/staff";
 import { IMPORT_BATCH_SIZE, previewImport, type ImportError, type ImportMode } from "@/server/services/product-import";
 import { writeInventoryMovement } from "@/server/services/inventory-ledger";
-import { importRemoteImage } from "@/server/services/remote-import-image";
+import { importRemoteImage } from "@/server/services/product-import-media";
 
 type Params = { params: Promise<{ jobId: string }> };
 
@@ -25,15 +25,15 @@ export async function POST(_request: Request, { params }: Params) {
     db.product.findMany({ select: { id: true, slug: true, sku: true } }),
     db.productVariant.findMany({ select: { id: true, publicId: true, productId: true, sku: true } }),
   ]);
-  const savedConfiguration = job.mapping as { columns?: Record<string, string>; mode?: ImportMode } | null;
-  const preview = previewImport({ csv: job.sourceCsv, mapping: savedConfiguration?.columns ?? (job.mapping as Record<string, string> | undefined), mode: savedConfiguration?.mode, categories, branches, products, variants });
+  const savedConfiguration = job.mapping as { columns?: Record<string, string>; mode?: ImportMode; imagePathsByRow?: Record<number, string[]> } | null;
+  const preview = previewImport({ csv: job.sourceCsv, mapping: savedConfiguration?.columns ?? (job.mapping as Record<string, string> | undefined), mode: savedConfiguration?.mode, imagePathsByRow: savedConfiguration?.imagePathsByRow, categories, branches, products, variants });
   if (preview.errors.length) return NextResponse.json({ error: "The CSV no longer validates. Review the refreshed errors before execution.", errors: preview.errors }, { status: 409 });
 
   for (const row of preview.rows) {
     if (!row.imageUrl) continue;
     try {
       const image = await importRemoteImage(row.imageUrl);
-      await db.mediaAsset.create({ data: { path: image.path, name: image.sourceUrl, contentType: image.contentType, size: image.size, uploadedById: authorization.user.id } });
+       await db.mediaAsset.create({ data: { path: image.path, name: row.imageUrl, contentType: image.contentType, size: image.size, uploadedById: authorization.user.id } });
       row.product.primaryImagePath = image.path;
       row.imagePaths = [image.path];
     } catch (error) {

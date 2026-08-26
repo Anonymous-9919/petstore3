@@ -53,10 +53,15 @@ function buildBaseOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput {
   return { createdAt: { gte: filters.start, lt: filters.end }, ...(filters.branchId ? { branchId: filters.branchId } : {}) };
 }
 
+function buildRecognizedOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput {
+  const itemFilter = buildItemFilter(filters);
+  return { deliveredAt: { gte: filters.start, lt: filters.end }, status: "DELIVERED", ...(filters.branchId ? { branchId: filters.branchId } : {}), ...(filters.productId || filters.categoryId ? { items: { some: itemFilter } } : {}) };
+}
+
 function buildItemFilter(filters: ReportFilters): Prisma.OrderItemWhereInput {
   const itemFilter: Prisma.OrderItemWhereInput = {
     ...(filters.productId ? { productId: filters.productId } : {}),
-    ...(filters.categoryId ? { product: { categoryId: filters.categoryId } } : {}),
+    ...(filters.categoryId ? { categoryIdSnapshot: filters.categoryId } : {}),
   };
   return itemFilter;
 }
@@ -64,16 +69,23 @@ function buildItemFilter(filters: ReportFilters): Prisma.OrderItemWhereInput {
 async function summary(filters: ReportFilters) {
   const where = buildOrderWhere(filters);
   const itemWhere: Prisma.OrderItemWhereInput = { ...buildItemFilter(filters), order: buildBaseOrderWhere(filters) };
+  const recognizedWhere = buildRecognizedOrderWhere(filters);
+  const recognizedItemWhere: Prisma.OrderItemWhereInput = { ...buildItemFilter(filters), order: { deliveredAt: { gte: filters.start, lt: filters.end }, status: "DELIVERED", ...(filters.branchId ? { branchId: filters.branchId } : {}) } };
   const hasItemScope = Boolean(filters.productId || filters.categoryId);
-  const [orders, units] = await Promise.all([
+  const [orders, units, recognizedOrders, recognizedUnits] = await Promise.all([
     db.order.aggregate({ where, _count: true, _sum: { total: true, subtotal: true, discountTotal: true, deliveryFee: true } }),
     db.orderItem.aggregate({ where: itemWhere, _sum: { quantity: true, lineTotal: true } }),
+    db.order.aggregate({ where: recognizedWhere, _count: true, _sum: { total: true } }),
+    db.orderItem.aggregate({ where: recognizedItemWhere, _sum: { quantity: true, lineTotal: true } }),
   ]);
   const count = orders._count;
   const gross = Number((hasItemScope ? units._sum.lineTotal : orders._sum.total)?.toString() ?? 0);
+  const recognizedRevenue = Number((hasItemScope ? recognizedUnits._sum.lineTotal : recognizedOrders._sum.total)?.toString() ?? 0);
   return {
     orders: count,
     grossOrderTotal: gross.toFixed(3),
+    recognizedRevenue: recognizedRevenue.toFixed(3),
+    recognizedOrders: recognizedOrders._count,
     subtotal: hasItemScope ? null : Number(orders._sum.subtotal?.toString() ?? 0).toFixed(3),
     discountTotal: hasItemScope ? null : Number(orders._sum.discountTotal?.toString() ?? 0).toFixed(3),
     deliveryFee: hasItemScope ? null : Number(orders._sum.deliveryFee?.toString() ?? 0).toFixed(3),
@@ -132,14 +144,14 @@ async function tableReport(filters: ReportFilters, table: ReturnType<typeof tabl
   const condition = (sql: string, value?: string) => value ? (values.push(value), ` AND ${sql.replace("?", `$${values.length}`)}`) : "";
   const scope = `o."createdAt" >= $1 AND o."createdAt" < $2${condition('o."branchId" = ?', filters.branchId)}`;
   // Item dimensions constrain every line-level total, never merely the parent order.
-  const itemScope = (alias: string) => `${condition(`${alias}."productId" = ?`, filters.productId)}${filters.categoryId ? ` AND EXISTS (SELECT 1 FROM "Product" scoped_product WHERE scoped_product.id = ${alias}."productId" AND scoped_product."categoryId" = $${values.push(filters.categoryId)})` : ""}`;
+  const itemScope = (alias: string) => `${condition(`${alias}."productId" = ?`, filters.productId)}${condition(`${alias}."categoryIdSnapshot" = ?`, filters.categoryId)}`;
   const limitOffset = () => { values.push(table.pageSize, (table.page - 1) * table.pageSize); return ` LIMIT $${values.length - 1} OFFSET $${values.length}`; };
   const query = table.table === "sales"
-    ? `SELECT date_trunc('${table.grouping}', o."createdAt") AS period, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE ${scope}${itemScope("i")} GROUP BY 1 ORDER BY 1 DESC${limitOffset()}`
+    ? `SELECT date_trunc('${table.grouping}', o."deliveredAt") AS period, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS recognized_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE o."deliveredAt" >= $1 AND o."deliveredAt" < $2${condition('o."branchId" = ?', filters.branchId)} AND o.status = 'DELIVERED'${itemScope("i")} GROUP BY 1 ORDER BY 1 DESC${limitOffset()}`
     : table.table === "products"
       ? `SELECT COALESCE(i."productName", 'Removed product') AS name, i.sku, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total, COUNT(DISTINCT o.id)::int AS orders FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE ${scope}${itemScope("i")} GROUP BY i."productName", i.sku ORDER BY SUM(i.quantity) DESC, i."productName" ASC${limitOffset()}`
       : table.table === "categories"
-        ? `SELECT c.name, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total, COUNT(DISTINCT o.id)::int AS orders FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" JOIN "Product" p ON p.id = i."productId" JOIN "Category" c ON c.id = p."categoryId" WHERE ${scope}${itemScope("i")} GROUP BY c.id, c.name ORDER BY SUM(i.quantity) DESC, c.name ASC${limitOffset()}`
+        ? `SELECT COALESCE(i."categoryNameSnapshot", 'Uncategorized') AS name, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS recognized_line_total, COUNT(DISTINCT o.id)::int AS orders FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE o."deliveredAt" >= $1 AND o."deliveredAt" < $2${condition('o."branchId" = ?', filters.branchId)} AND o.status = 'DELIVERED'${itemScope("i")} GROUP BY i."categoryIdSnapshot", i."categoryNameSnapshot" ORDER BY SUM(i.quantity) DESC, name ASC${limitOffset()}`
         : table.table === "branches"
           ? `SELECT COALESCE(b.name, 'Unassigned') AS name, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" LEFT JOIN "Branch" b ON b.id = o."branchId" WHERE ${scope}${itemScope("i")} GROUP BY b.id, b.name ORDER BY COUNT(DISTINCT o.id) DESC, name ASC${limitOffset()}`
           : table.table === "customers"
@@ -150,7 +162,7 @@ async function tableReport(filters: ReportFilters, table: ReturnType<typeof tabl
                 ? `SELECT p.name, COUNT(r.id)::int AS redemptions, COALESCE(SUM(r.amount), 0)::text AS discount_amount, COUNT(DISTINCT o.id)::int AS orders FROM "PromotionRedemption" r JOIN "Promotion" p ON p.id = r."promotionId" JOIN "Order" o ON o.id = r."orderId" WHERE ${scope}${(filters.productId || filters.categoryId) ? ` AND EXISTS (SELECT 1 FROM "OrderItem" scoped_item WHERE scoped_item."orderId" = o.id${itemScope("scoped_item")})` : ""} GROUP BY p.id, p.name ORDER BY COUNT(r.id) DESC, p.name ASC${limitOffset()}`
                 : `SELECT i.id, p.name AS product, b.name AS branch, i.quantity, i.reserved, i."lowStockAt" AS low_stock_at, (i.quantity - i.reserved) AS available, i."updatedAt" AS updated_at FROM "InventoryLevel" i JOIN "Product" p ON p.id = i."productId" JOIN "Branch" b ON b.id = i."branchId" WHERE i."lowStockAt" > 0 AND (i.quantity - i.reserved) <= i."lowStockAt"${condition('i."branchId" = ?', filters.branchId)}${condition('i."productId" = ?', filters.productId)}${filters.categoryId ? ` AND p."categoryId" = $${values.push(filters.categoryId)}` : ""} ORDER BY available ASC, p.name ASC${limitOffset()}`;
   const rows = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(query, ...values);
-  return { table: table.table, rows, pagination: { page: table.page, pageSize: table.pageSize, hasNextPage: rows.length === table.pageSize }, notes: table.table === "categories" ? ["Category attribution uses the current category of still-linked products; removed products are omitted."] : ["Units and gross line totals include only matching order items. Orders are distinct orders containing at least one matching item."] };
+  return { table: table.table, rows, pagination: { page: table.page, pageSize: table.pageSize, hasNextPage: rows.length === table.pageSize }, notes: table.table === "categories" ? ["Category attribution is snapshotted at checkout and includes removed products."] : ["Sales tables use delivered-only recognized revenue; operational tables retain all matching orders."] };
 }
 
 export async function GET(request?: Request) {
@@ -184,7 +196,7 @@ export async function GET(request?: Request) {
   const report = {
     dateSemantics: filters.productId || filters.categoryId
       ? "Orders are distinct orders created during the UTC dates that contain at least one matching item. Units and gross line totals include only matching items; order-level discounts and delivery fees are not attributed."
-      : "Orders created from the UTC start date through the UTC end date, inclusive. Gross order totals are order amounts, not recognized revenue.",
+      : "Orders created from the UTC start date through the UTC end date, inclusive. Gross totals include all statuses; recognized revenue includes only orders delivered in the selected period.",
     period: { start: filters.start.toISOString(), end: new Date(filters.end.getTime() - 1).toISOString() },
     filters: { branchId: filters.branchId ?? null, categoryId: filters.categoryId ?? null, productId: filters.productId ?? null },
     metrics,
@@ -201,7 +213,9 @@ export async function GET(request?: Request) {
       ["section", "label", "value", "detail"],
       ["scope", "created_at_utc", `${filters.start.toISOString().slice(0, 10)} to ${new Date(filters.end.getTime() - 1).toISOString().slice(0, 10)}`, "inclusive calendar dates"],
       ["metric", "orders", metrics.orders, "orders matching all selected filters"],
-      ["metric", "gross_order_total_kwd", report.metrics.grossOrderTotal, filters.productId || filters.categoryId ? "sum of matching OrderItem.lineTotal" : "sum of Order.total; current status is not used to recognize revenue"],
+       ["metric", "gross_order_total_kwd", report.metrics.grossOrderTotal, filters.productId || filters.categoryId ? "sum of matching OrderItem.lineTotal across all statuses" : "sum of Order.total across all statuses"],
+       ["metric", "recognized_revenue_kwd", report.metrics.recognizedRevenue, "delivered-only revenue under the configured recognition policy"],
+       ["metric", "recognized_orders", report.metrics.recognizedOrders, "delivered orders matching all selected filters"],
       ...(metrics.discountTotal === null ? [] : [["metric", "discount_total_kwd", metrics.discountTotal, "order discount amounts; not a promotion-attribution metric"]]),
       ...(metrics.deliveryFee === null ? [] : [["metric", "delivery_fee_kwd", metrics.deliveryFee, "order delivery fees; not recognized revenue"]]),
       ["metric", "units", report.metrics.units, filters.productId || filters.categoryId ? "sum of matching order-item quantities" : "sum of order-item quantities on matching orders"],

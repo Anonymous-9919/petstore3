@@ -48,7 +48,7 @@ describe("reservation expiry scheduler", () => {
       { headers: { authorization: "Bearer scheduler-secret" } },
     ));
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 100, distinct: ["orderId"] }));
     await expect(response.json()).resolves.toMatchObject({
       batchSize: 100,

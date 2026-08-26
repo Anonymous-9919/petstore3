@@ -388,7 +388,7 @@ export async function settleKnetPayment(input: KnetSettlementInput) {
         paymentMethod: PaymentMethod.KNET,
         paymentStatus: PaymentStatus.PENDING,
       },
-      data: { status: targetOrderStatus, paymentStatus: targetPaymentStatus },
+      data: { status: targetOrderStatus, paymentStatus: targetPaymentStatus, ...(captured ? { paidAt: now } : {}) },
     });
     if (orderUpdated.count !== 1) {
       integrityError("The order changed before payment settlement completed.", "INVALID_STATE");
@@ -562,7 +562,7 @@ export async function transitionCashOrder(input: {
         paymentMethod: PaymentMethod.CASH,
         paymentStatus: PaymentStatus.CASH_DUE,
       },
-      data: { status: targetOrderStatus, paymentStatus: targetPaymentStatus },
+      data: { status: targetOrderStatus, paymentStatus: targetPaymentStatus, ...(input.targetStatus === "ASSIGNED_TO_BRANCH" ? { acceptedAt: new Date() } : {}) },
     });
     if (claimed.count !== 1) {
       order = await tx.order.findUnique({ where: { id: input.orderId }, include: cashOrderInclude });
@@ -611,5 +611,42 @@ export async function transitionCashOrder(input: {
       },
     });
     return cashTransitionResult(tx, order.id, true);
+  });
+}
+
+const operationalTransitions: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  [OrderStatus.ASSIGNED_TO_BRANCH]: [OrderStatus.ASSIGNED_TO_DRIVER],
+  [OrderStatus.ASSIGNED_TO_DRIVER]: [OrderStatus.OUT_FOR_DELIVERY],
+  [OrderStatus.OUT_FOR_DELIVERY]: [OrderStatus.DELIVERED],
+};
+
+export async function transitionOperationalOrder(input: { orderId: string; targetStatus: OrderStatus; actorId: string }) {
+  return db.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({ where: { id: input.orderId }, include: { customer: { select: { email: true } }, payments: true } });
+    if (!order) integrityError("This order was not found.", "NOT_FOUND");
+    if (order.status === input.targetStatus) return { order, email: order.customer?.email, changed: false };
+    if (!operationalTransitions[order.status]?.includes(input.targetStatus)) integrityError("This order cannot be updated from its current state.", "CONTRADICTORY_OUTCOME");
+    const now = new Date();
+    const claimed = await tx.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: {
+        status: input.targetStatus,
+        ...(input.targetStatus === OrderStatus.ASSIGNED_TO_BRANCH ? { acceptedAt: now } : {}),
+        ...(input.targetStatus === OrderStatus.DELIVERED ? { deliveredAt: now } : {}),
+      },
+    });
+    if (claimed.count !== 1) integrityError("The order changed concurrently.", "CONTRADICTORY_OUTCOME");
+    if (input.targetStatus === OrderStatus.DELIVERED && order.paymentMethod === PaymentMethod.CASH) {
+      const payment = order.payments.find((candidate) => candidate.status === PaymentStatus.CASH_DUE);
+      if (!payment) integrityError("The cash payment is not due.", "INVALID_STATE");
+      const settled = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.CASH_DUE }, data: { status: PaymentStatus.CASH_COLLECTED } });
+      if (settled.count !== 1) integrityError("The cash payment changed concurrently.", "INVALID_STATE");
+      await tx.order.update({ where: { id: order.id }, data: { paymentStatus: PaymentStatus.CASH_COLLECTED, paidAt: now } });
+    }
+    await tx.orderStatusHistory.create({ data: { orderId: order.id, fromStatus: order.status, toStatus: input.targetStatus, actorId: input.actorId } });
+    await tx.auditLog.create({ data: { actorId: input.actorId, action: "order.status.updated", entityType: "order", entityId: order.id, before: { status: order.status }, after: { status: input.targetStatus } } });
+    const updated = await tx.order.findUnique({ where: { id: order.id } });
+    if (!updated) integrityError("The order no longer exists.", "NOT_FOUND");
+    return { order: updated, email: order.customer?.email, changed: true };
   });
 }

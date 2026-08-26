@@ -153,7 +153,7 @@ export async function quoteCheckout(input: CheckoutRequest, authenticatedCustome
     // `legacyId` is retained for carts persisted before Phase 3; publicId is the
     // canonical identifier for newly emitted storefront payloads.
     where: { OR: [{ publicId: { in: legacyProductIds } }, { legacyId: { in: legacyProductIds } }], isActive: true, archivedAt: null, category: { isActive: true, archivedAt: null } },
-    include: { optionGroups: { include: { values: { where: { isActive: true } } } }, variants: { where: { isActive: true }, orderBy: { publicId: "asc" } } },
+    include: { category: { select: { id: true, name: true } }, optionGroups: { include: { values: { where: { isActive: true } } } }, variants: { where: { isActive: true }, orderBy: { publicId: "asc" } } },
   });
   if (products.length !== new Set(legacyProductIds).size) throw new CheckoutError("One or more products are unavailable.");
 
@@ -285,7 +285,10 @@ export async function createOrder(input: CheckoutRequest, authenticatedCustomerI
             productNameAr: line.product.nameAr,
             sku: line.variant.sku ?? line.product.sku,
             imagePath: line.product.primaryImagePath,
+            categoryIdSnapshot: line.product.category.id,
+            categoryNameSnapshot: line.product.category.name,
             unitPrice: line.unitPrice,
+            unitCost: line.variant.cost,
             quantity: line.item.quantity,
             lineTotal: line.lineTotal,
             note: line.item.note,

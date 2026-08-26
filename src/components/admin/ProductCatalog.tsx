@@ -1,141 +1,1606 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
-type Category = { id: string; name: string; nameAr: string; archivedAt: string | null };
-type Product = { id: string; categoryId: string; slug: string; sku: string | null; name: string; nameAr: string; description: string | null; descriptionAr: string | null; shortDescription: string | null; shortDescriptionAr: string | null; brand: string | null; tags: string[]; seoTitle: string | null; seoTitleAr: string | null; seoDescription: string | null; seoDescriptionAr: string | null; basePrice: string; compareAtPrice: string | null; primaryImagePath: string | null; sortOrder: number; isActive: boolean; isFeatured: boolean; allowPreorder: boolean; isDeliveryEnabled: boolean; isPickupEnabled: boolean; minQuantity: number; maxQuantity: number | null; quantityIncrement: number; archivedAt: string | null; category: { name: string; nameAr: string } };
+type Category = {
+  id: string;
+  name: string;
+  nameAr: string;
+  archivedAt: string | null;
+};
+type Product = {
+  id: string;
+  categoryId: string;
+  slug: string;
+  sku: string | null;
+  name: string;
+  nameAr: string;
+  description: string | null;
+  descriptionAr: string | null;
+  shortDescription: string | null;
+  shortDescriptionAr: string | null;
+  brand: string | null;
+  tags: string[];
+  seoTitle: string | null;
+  seoTitleAr: string | null;
+  seoDescription: string | null;
+  seoDescriptionAr: string | null;
+  basePrice: string;
+  compareAtPrice: string | null;
+  primaryImagePath: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  isFeatured: boolean;
+  allowPreorder: boolean;
+  isDeliveryEnabled: boolean;
+  isPickupEnabled: boolean;
+  minQuantity: number;
+  maxQuantity: number | null;
+  quantityIncrement: number;
+  archivedAt: string | null;
+  category: { name: string; nameAr: string };
+};
 type Image = { path: string; alt: string; altAr: string; sortOrder: number };
-type OptionValue = { id?: string; value: string; valueAr: string; priceDelta: number; compareAtDelta: string; imagePath: string; sortOrder: number; isActive: boolean };
-type OptionGroup = { id?: string; name: string; nameAr: string; isRequired: boolean; allowsMultiple: boolean; minSelections: number; maxSelections: string; sortOrder: number; values: OptionValue[] };
-type InventoryLevel = { id: string; quantity: number; reserved: number; lowStockAt: number; variant: { id: string; sku: string | null; name: string | null; nameAr: string | null } | null; branch: { id: string; name: string; nameAr: string } };
-type Variant = { id?: string; sku: string; barcode: string; name: string; nameAr: string; price: string; compareAtPrice: string; cost: string; weight: string; isActive: boolean };
-type Form = Omit<Product, "id" | "sku" | "description" | "descriptionAr" | "shortDescription" | "shortDescriptionAr" | "brand" | "seoTitle" | "seoTitleAr" | "seoDescription" | "seoDescriptionAr" | "compareAtPrice" | "primaryImagePath" | "maxQuantity" | "archivedAt" | "category"> & { sku: string; description: string; descriptionAr: string; shortDescription: string; shortDescriptionAr: string; brand: string; seoTitle: string; seoTitleAr: string; seoDescription: string; seoDescriptionAr: string; compareAtPrice: string; primaryImagePath: string; maxQuantity: string; images: Image[]; optionGroups: OptionGroup[]; variants: Variant[]; inventoryLevels: InventoryLevel[] };
-type Filters = { query: string; status: string; archived: string; stock: string; categoryId: string; sort: string; direction: string };
+type OptionValue = {
+  id?: string;
+  value: string;
+  valueAr: string;
+  priceDelta: number;
+  compareAtDelta: string;
+  imagePath: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+type OptionGroup = {
+  id?: string;
+  name: string;
+  nameAr: string;
+  isRequired: boolean;
+  allowsMultiple: boolean;
+  minSelections: number;
+  maxSelections: string;
+  sortOrder: number;
+  values: OptionValue[];
+};
+type InventoryLevel = {
+  id: string;
+  quantity: number;
+  reserved: number;
+  lowStockAt: number;
+  variant: {
+    id: string;
+    sku: string | null;
+    name: string | null;
+    nameAr: string | null;
+  } | null;
+  branch: { id: string; name: string; nameAr: string };
+};
+type Variant = {
+  id?: string;
+  sku: string;
+  barcode: string;
+  name: string;
+  nameAr: string;
+  price: string;
+  compareAtPrice: string;
+  cost: string;
+  weight: string;
+  isActive: boolean;
+};
+type Form = Omit<
+  Product,
+  | "id"
+  | "sku"
+  | "description"
+  | "descriptionAr"
+  | "shortDescription"
+  | "shortDescriptionAr"
+  | "brand"
+  | "seoTitle"
+  | "seoTitleAr"
+  | "seoDescription"
+  | "seoDescriptionAr"
+  | "compareAtPrice"
+  | "primaryImagePath"
+  | "maxQuantity"
+  | "archivedAt"
+  | "category"
+> & {
+  sku: string;
+  description: string;
+  descriptionAr: string;
+  shortDescription: string;
+  shortDescriptionAr: string;
+  brand: string;
+  seoTitle: string;
+  seoTitleAr: string;
+  seoDescription: string;
+  seoDescriptionAr: string;
+  compareAtPrice: string;
+  primaryImagePath: string;
+  maxQuantity: string;
+  images: Image[];
+  optionGroups: OptionGroup[];
+  variants: Variant[];
+  inventoryLevels: InventoryLevel[];
+};
+type Filters = {
+  query: string;
+  status: string;
+  archived: string;
+  stock: string;
+  categoryId: string;
+  sort: string;
+  direction: string;
+};
 
-const empty: Form = { categoryId: "", slug: "", sku: "", name: "", nameAr: "", description: "", descriptionAr: "", shortDescription: "", shortDescriptionAr: "", brand: "", tags: [], seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", basePrice: "0", compareAtPrice: "", primaryImagePath: "", sortOrder: 0, isActive: true, isFeatured: false, allowPreorder: false, isDeliveryEnabled: true, isPickupEnabled: true, minQuantity: 1, maxQuantity: "", quantityIncrement: 1, images: [], optionGroups: [], variants: [], inventoryLevels: [] };
-const initialFilters: Filters = { query: "", status: "all", archived: "active", stock: "all", categoryId: "", sort: "sortOrder", direction: "asc" };
+const empty: Form = {
+  categoryId: "",
+  slug: "",
+  sku: "",
+  name: "",
+  nameAr: "",
+  description: "",
+  descriptionAr: "",
+  shortDescription: "",
+  shortDescriptionAr: "",
+  brand: "",
+  tags: [],
+  seoTitle: "",
+  seoTitleAr: "",
+  seoDescription: "",
+  seoDescriptionAr: "",
+  basePrice: "0",
+  compareAtPrice: "",
+  primaryImagePath: "",
+  sortOrder: 0,
+  isActive: true,
+  isFeatured: false,
+  allowPreorder: false,
+  isDeliveryEnabled: true,
+  isPickupEnabled: true,
+  minQuantity: 1,
+  maxQuantity: "",
+  quantityIncrement: 1,
+  images: [],
+  optionGroups: [],
+  variants: [],
+  inventoryLevels: [],
+};
+const initialFilters: Filters = {
+  query: "",
+  status: "all",
+  archived: "active",
+  stock: "all",
+  categoryId: "",
+  sort: "sortOrder",
+  direction: "asc",
+};
 const PRODUCT_VIEWS_KEY = "petstore-admin-product-views";
 type SavedView = { name: string; filters: Filters };
-const blankValue = (sortOrder: number): OptionValue => ({ value: "", valueAr: "", priceDelta: 0, compareAtDelta: "", imagePath: "", sortOrder, isActive: true });
-const blankGroup = (sortOrder: number): OptionGroup => ({ name: "", nameAr: "", isRequired: false, allowsMultiple: false, minSelections: 0, maxSelections: "", sortOrder, values: [] });
-const blankVariant = (): Variant => ({ sku: "", barcode: "", name: "", nameAr: "", price: "", compareAtPrice: "", cost: "", weight: "", isActive: true });
+const blankValue = (sortOrder: number): OptionValue => ({
+  value: "",
+  valueAr: "",
+  priceDelta: 0,
+  compareAtDelta: "",
+  imagePath: "",
+  sortOrder,
+  isActive: true,
+});
+const blankGroup = (sortOrder: number): OptionGroup => ({
+  name: "",
+  nameAr: "",
+  isRequired: false,
+  allowsMultiple: false,
+  minSelections: 0,
+  maxSelections: "",
+  sortOrder,
+  values: [],
+});
+const blankVariant = (): Variant => ({
+  sku: "",
+  barcode: "",
+  name: "",
+  nameAr: "",
+  price: "",
+  compareAtPrice: "",
+  cost: "",
+  weight: "",
+  isActive: true,
+});
 
-export function ProductCatalog({ categories: initialCategories, initialQuery = "" }: { categories: Category[]; initialQuery?: string }) {
+export function ProductCatalog({
+  categories: initialCategories,
+  initialQuery = "",
+  editId,
+}: {
+  categories: Category[];
+  initialQuery?: string;
+  editId?: string;
+}) {
   const [products, setProducts] = useState<Product[]>([]);
   const categories = initialCategories;
   const [form, setForm] = useState<Form>(empty);
-  const [filters, setFilters] = useState<Filters>({ ...initialFilters, query: initialQuery });
-  const [page, setPage] = useState(1); const [totalPages, setTotalPages] = useState(1); const [total, setTotal] = useState(0);
-  const [editing, setEditing] = useState<string | null>(null); const [selected, setSelected] = useState<string[]>([]); const [bulkCategoryId, setBulkCategoryId] = useState(""); const [bulkPrice, setBulkPrice] = useState("");
-  const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const [filters, setFilters] = useState<Filters>({
+    ...initialFilters,
+    query: initialQuery,
+  });
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkCategoryId, setBulkCategoryId] = useState("");
+  const [bulkPrice, setBulkPrice] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [viewName, setViewName] = useState("");
   const editorRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(PRODUCT_VIEWS_KEY) ?? "[]") as SavedView[];
-      if (Array.isArray(saved)) setSavedViews(saved.filter((view) => view && typeof view.name === "string" && view.filters));
-    } catch { window.localStorage.removeItem(PRODUCT_VIEWS_KEY); }
+      const saved = JSON.parse(
+        window.localStorage.getItem(PRODUCT_VIEWS_KEY) ?? "[]",
+      ) as SavedView[];
+      if (Array.isArray(saved))
+        setSavedViews(
+          saved.filter(
+            (view) => view && typeof view.name === "string" && view.filters,
+          ),
+        );
+    } catch {
+      window.localStorage.removeItem(PRODUCT_VIEWS_KEY);
+    }
   }, []);
   const [savedForm, setSavedForm] = useState(() => JSON.stringify(empty));
   const dirty = JSON.stringify(form) !== savedForm;
   useEffect(() => {
-    const protect = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
+    const protect = (event: BeforeUnloadEvent) => {
+      if (dirty) event.preventDefault();
+    };
     window.addEventListener("beforeunload", protect);
     return () => window.removeEventListener("beforeunload", protect);
   }, [dirty]);
 
   const load = async (nextPage = page) => {
-    setError(""); const params = new URLSearchParams({ page: String(nextPage), pageSize: "25", ...filters });
-    if (!filters.query) params.delete("query"); if (!filters.categoryId) params.delete("categoryId");
+    setError("");
+    const params = new URLSearchParams({
+      page: String(nextPage),
+      pageSize: "25",
+      ...filters,
+    });
+    if (!filters.query) params.delete("query");
+    if (!filters.categoryId) params.delete("categoryId");
     try {
       const productResponse = await fetch(`/api/admin/products?${params}`);
-      if (!productResponse.ok) throw new Error((await productResponse.json()).error ?? "Unable to load products.");
-      const data = await productResponse.json() as { products: Product[]; pagination: { total: number; totalPages: number } };
-      setProducts(data.products); setTotal(data.pagination.total); setTotalPages(Math.max(1, data.pagination.totalPages));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load products."); }
+      if (!productResponse.ok)
+        throw new Error(
+          (await productResponse.json()).error ?? "Unable to load products.",
+        );
+      const data = (await productResponse.json()) as {
+        products: Product[];
+        pagination: { total: number; totalPages: number };
+      };
+      setProducts(data.products);
+      setTotal(data.pagination.total);
+      setTotalPages(Math.max(1, data.pagination.totalPages));
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to load products.",
+      );
+    }
   };
-  useEffect(() => { void load(1); }, [filters]);
-  const change = (key: keyof Form, value: string | boolean | number) => setForm((current) => ({ ...current, [key]: value }));
-  const changeFilter = (key: keyof Filters, value: string) => { setPage(1); setFilters((current) => ({ ...current, [key]: value })); };
+  useEffect(() => {
+    void load(1);
+  }, [filters]);
+  useEffect(() => {
+    if (editId) void edit(editId);
+  }, [editId]);
+  const change = (key: keyof Form, value: string | boolean | number) =>
+    setForm((current) => ({ ...current, [key]: value }));
+  const changeFilter = (key: keyof Filters, value: string) => {
+    setPage(1);
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
   function saveView() {
     const name = viewName.trim();
     if (!name) return setError("Enter a name before saving this view.");
-    const next = [{ name, filters }, ...savedViews.filter((view) => view.name !== name)].slice(0, 12);
-    setSavedViews(next); window.localStorage.setItem(PRODUCT_VIEWS_KEY, JSON.stringify(next)); setViewName(""); setError("");
+    const next = [
+      { name, filters },
+      ...savedViews.filter((view) => view.name !== name),
+    ].slice(0, 12);
+    setSavedViews(next);
+    window.localStorage.setItem(PRODUCT_VIEWS_KEY, JSON.stringify(next));
+    setViewName("");
+    setError("");
   }
   function removeView(name: string) {
     const next = savedViews.filter((view) => view.name !== name);
-    setSavedViews(next); window.localStorage.setItem(PRODUCT_VIEWS_KEY, JSON.stringify(next));
+    setSavedViews(next);
+    window.localStorage.setItem(PRODUCT_VIEWS_KEY, JSON.stringify(next));
   }
-  const normalized = () => ({ ...form, sku: form.sku || null, description: form.description || null, descriptionAr: form.descriptionAr || null, shortDescription: form.shortDescription || null, shortDescriptionAr: form.shortDescriptionAr || null, brand: form.brand || null, seoTitle: form.seoTitle || null, seoTitleAr: form.seoTitleAr || null, seoDescription: form.seoDescription || null, seoDescriptionAr: form.seoDescriptionAr || null, tags: form.tags.map((tag) => tag.trim()).filter(Boolean), primaryImagePath: form.primaryImagePath || null, compareAtPrice: form.compareAtPrice === "" ? null : Number(form.compareAtPrice), maxQuantity: form.maxQuantity === "" ? null : Number(form.maxQuantity), variants: form.variants.map((variant) => ({ ...variant, sku: variant.sku || null, barcode: variant.barcode || null, name: variant.name || null, nameAr: variant.nameAr || null, price: variant.price === "" ? undefined : Number(variant.price), compareAtPrice: variant.compareAtPrice === "" ? null : Number(variant.compareAtPrice), cost: variant.cost === "" ? null : Number(variant.cost), weight: variant.weight === "" ? null : Number(variant.weight) })), images: form.images.map((image, sortOrder) => ({ ...image, sortOrder, alt: image.alt || null, altAr: image.altAr || null })), optionGroups: form.optionGroups.map((group, sortOrder) => ({ ...group, sortOrder, maxSelections: group.maxSelections === "" ? null : Number(group.maxSelections), values: group.values.map((value, valueSort) => ({ ...value, sortOrder: valueSort, compareAtDelta: value.compareAtDelta === "" ? null : Number(value.compareAtDelta), imagePath: value.imagePath || null })) })) });
+  const normalized = () => ({
+    ...form,
+    sku: form.sku || null,
+    description: form.description || null,
+    descriptionAr: form.descriptionAr || null,
+    shortDescription: form.shortDescription || null,
+    shortDescriptionAr: form.shortDescriptionAr || null,
+    brand: form.brand || null,
+    seoTitle: form.seoTitle || null,
+    seoTitleAr: form.seoTitleAr || null,
+    seoDescription: form.seoDescription || null,
+    seoDescriptionAr: form.seoDescriptionAr || null,
+    tags: form.tags.map((tag) => tag.trim()).filter(Boolean),
+    primaryImagePath: form.primaryImagePath || null,
+    compareAtPrice:
+      form.compareAtPrice === "" ? null : Number(form.compareAtPrice),
+    maxQuantity: form.maxQuantity === "" ? null : Number(form.maxQuantity),
+    variants: form.variants.map((variant) => ({
+      ...variant,
+      sku: variant.sku || null,
+      barcode: variant.barcode || null,
+      name: variant.name || null,
+      nameAr: variant.nameAr || null,
+      price: variant.price === "" ? undefined : Number(variant.price),
+      compareAtPrice:
+        variant.compareAtPrice === "" ? null : Number(variant.compareAtPrice),
+      cost: variant.cost === "" ? null : Number(variant.cost),
+      weight: variant.weight === "" ? null : Number(variant.weight),
+    })),
+    images: form.images.map((image, sortOrder) => ({
+      ...image,
+      sortOrder,
+      alt: image.alt || null,
+      altAr: image.altAr || null,
+    })),
+    optionGroups: form.optionGroups.map((group, sortOrder) => ({
+      ...group,
+      sortOrder,
+      maxSelections:
+        group.maxSelections === "" ? null : Number(group.maxSelections),
+      values: group.values.map((value, valueSort) => ({
+        ...value,
+        sortOrder: valueSort,
+        compareAtDelta:
+          value.compareAtDelta === "" ? null : Number(value.compareAtDelta),
+        imagePath: value.imagePath || null,
+      })),
+    })),
+  });
 
   async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault();
+    setBusy(true);
+    setError("");
     try {
       const body = normalized();
-      const response = await fetch(editing ? `/api/admin/products/${editing}` : "/api/admin/products", { method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(editing ? body : (() => { const product: Partial<typeof body> = { ...body }; delete product.images; delete product.optionGroups; delete product.inventoryLevels; return product; })()) });
-      if (!response.ok) throw new Error((await response.json()).error ?? "Unable to save product.");
-      setSavedForm(JSON.stringify(empty)); setForm(empty); setEditing(null); setPage(1); await load(1);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save product."); } finally { setBusy(false); }
+      const response = await fetch(
+        editing ? `/api/admin/products/${editing}` : "/api/admin/products",
+        {
+          method: editing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            editing
+              ? body
+              : (() => {
+                  const product: Partial<typeof body> = { ...body };
+                  delete product.images;
+                  delete product.optionGroups;
+                  delete product.inventoryLevels;
+                  return product;
+                })(),
+          ),
+        },
+      );
+      if (!response.ok)
+        throw new Error(
+          (await response.json()).error ?? "Unable to save product.",
+        );
+      setSavedForm(JSON.stringify(empty));
+      setForm(empty);
+      setEditing(null);
+      setPage(1);
+      await load(1);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to save product.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
   async function edit(id: string) {
-    setBusy(true); setError("");
+    if (!editId) {
+      window.location.assign(`/admin/products/${id}/edit`);
+      return;
+    }
+    setBusy(true);
+    setError("");
     try {
-      const response = await fetch(`/api/admin/products/${id}`); if (!response.ok) throw new Error((await response.json()).error ?? "Unable to load product.");
-      const product = await response.json() as Product & { images: Array<Image & { alt: string | null; altAr: string | null }>; optionGroups: Array<OptionGroup & { values: Array<OptionValue & { priceDelta: string; compareAtDelta: string | null; imagePath: string | null }> }>; variants?: Array<Variant & { isDefault: boolean }>; inventoryLevels: InventoryLevel[] };
-      const nextForm = { ...product, sku: product.sku ?? "", description: product.description ?? "", descriptionAr: product.descriptionAr ?? "", shortDescription: product.shortDescription ?? "", shortDescriptionAr: product.shortDescriptionAr ?? "", brand: product.brand ?? "", seoTitle: product.seoTitle ?? "", seoTitleAr: product.seoTitleAr ?? "", seoDescription: product.seoDescription ?? "", seoDescriptionAr: product.seoDescriptionAr ?? "", basePrice: String(product.basePrice), compareAtPrice: product.compareAtPrice ?? "", primaryImagePath: product.primaryImagePath ?? "", maxQuantity: product.maxQuantity == null ? "" : String(product.maxQuantity), images: product.images.map((image) => ({ ...image, alt: image.alt ?? "", altAr: image.altAr ?? "" })), optionGroups: product.optionGroups.map((group) => ({ ...group, maxSelections: group.maxSelections == null ? "" : String(group.maxSelections), values: group.values.map((value) => ({ ...value, priceDelta: Number(value.priceDelta), compareAtDelta: value.compareAtDelta ?? "", imagePath: value.imagePath ?? "" })) })), variants: (product.variants ?? []).filter((variant) => !variant.isDefault).map((variant) => ({ ...variant, sku: variant.sku ?? "", barcode: variant.barcode ?? "", name: variant.name ?? "", nameAr: variant.nameAr ?? "", price: String(variant.price), compareAtPrice: variant.compareAtPrice ?? "", cost: variant.cost ?? "", weight: variant.weight ?? "" })), inventoryLevels: product.inventoryLevels } as Form;
-       setSavedForm(JSON.stringify(nextForm)); setEditing(id); setForm(nextForm);
-       requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); (editorRef.current?.querySelector("h2") as HTMLElement | null)?.focus(); });
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load product."); } finally { setBusy(false); }
+      const response = await fetch(`/api/admin/products/${id}`);
+      if (!response.ok)
+        throw new Error(
+          (await response.json()).error ?? "Unable to load product.",
+        );
+      const product = (await response.json()) as Product & {
+        images: Array<Image & { alt: string | null; altAr: string | null }>;
+        optionGroups: Array<
+          OptionGroup & {
+            values: Array<
+              OptionValue & {
+                priceDelta: string;
+                compareAtDelta: string | null;
+                imagePath: string | null;
+              }
+            >;
+          }
+        >;
+        variants?: Array<Variant & { isDefault: boolean }>;
+        inventoryLevels: InventoryLevel[];
+      };
+      const nextForm = {
+        ...product,
+        sku: product.sku ?? "",
+        description: product.description ?? "",
+        descriptionAr: product.descriptionAr ?? "",
+        shortDescription: product.shortDescription ?? "",
+        shortDescriptionAr: product.shortDescriptionAr ?? "",
+        brand: product.brand ?? "",
+        seoTitle: product.seoTitle ?? "",
+        seoTitleAr: product.seoTitleAr ?? "",
+        seoDescription: product.seoDescription ?? "",
+        seoDescriptionAr: product.seoDescriptionAr ?? "",
+        basePrice: String(product.basePrice),
+        compareAtPrice: product.compareAtPrice ?? "",
+        primaryImagePath: product.primaryImagePath ?? "",
+        maxQuantity:
+          product.maxQuantity == null ? "" : String(product.maxQuantity),
+        images: product.images.map((image) => ({
+          ...image,
+          alt: image.alt ?? "",
+          altAr: image.altAr ?? "",
+        })),
+        optionGroups: product.optionGroups.map((group) => ({
+          ...group,
+          maxSelections:
+            group.maxSelections == null ? "" : String(group.maxSelections),
+          values: group.values.map((value) => ({
+            ...value,
+            priceDelta: Number(value.priceDelta),
+            compareAtDelta: value.compareAtDelta ?? "",
+            imagePath: value.imagePath ?? "",
+          })),
+        })),
+        variants: (product.variants ?? [])
+          .filter((variant) => !variant.isDefault)
+          .map((variant) => ({
+            ...variant,
+            sku: variant.sku ?? "",
+            barcode: variant.barcode ?? "",
+            name: variant.name ?? "",
+            nameAr: variant.nameAr ?? "",
+            price: String(variant.price),
+            compareAtPrice: variant.compareAtPrice ?? "",
+            cost: variant.cost ?? "",
+            weight: variant.weight ?? "",
+          })),
+        inventoryLevels: product.inventoryLevels,
+      } as Form;
+      setSavedForm(JSON.stringify(nextForm));
+      setEditing(id);
+      setForm(nextForm);
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        editorRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+        (editorRef.current?.querySelector("h2") as HTMLElement | null)?.focus();
+      }, 0);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to load product.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
-  async function archive(id: string) { if (!confirm("Archive this product?")) return; const response = await fetch(`/api/admin/products/${id}`, { method: "DELETE" }); if (!response.ok) setError((await response.json()).error ?? "Unable to archive product."); else await load(page); }
-  async function restore(id: string) { const response = await fetch(`/api/admin/products/${id}/restore`, { method: "POST" }); if (!response.ok) setError((await response.json()).error ?? "Unable to restore product."); else await load(page); }
+  async function archive(id: string) {
+    if (!confirm("Archive this product?")) return;
+    const response = await fetch(`/api/admin/products/${id}`, {
+      method: "DELETE",
+    });
+    if (!response.ok)
+      setError((await response.json()).error ?? "Unable to archive product.");
+    else await load(page);
+  }
+  async function restore(id: string) {
+    const response = await fetch(`/api/admin/products/${id}/restore`, {
+      method: "POST",
+    });
+    if (!response.ok)
+      setError((await response.json()).error ?? "Unable to restore product.");
+    else await load(page);
+  }
   async function bulk(action: string) {
-    if (!selected.length) return; const payload: Record<string, unknown> = { action, productIds: selected };
-    if (action === "category") { if (!bulkCategoryId) return setError("Select a category for the bulk category action."); payload.categoryId = bulkCategoryId; }
-    if (action === "price") { if (bulkPrice === "") return setError("Enter a base price for the bulk price action."); payload.basePrice = Number(bulkPrice); }
+    if (!selected.length) return;
+    const payload: Record<string, unknown> = { action, productIds: selected };
+    if (action === "category") {
+      if (!bulkCategoryId)
+        return setError("Select a category for the bulk category action.");
+      payload.categoryId = bulkCategoryId;
+    }
+    if (action === "price") {
+      if (bulkPrice === "")
+        return setError("Enter a base price for the bulk price action.");
+      payload.basePrice = Number(bulkPrice);
+    }
     setBusy(true);
     try {
-      const response = await fetch("/api/admin/products/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!response.ok) setError((await response.json()).error ?? "Unable to update products."); else { setSelected([]); await load(page); }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to update products."); }
-    finally { setBusy(false); }
+      const response = await fetch("/api/admin/products/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok)
+        setError((await response.json()).error ?? "Unable to update products.");
+      else {
+        setSelected([]);
+        await load(page);
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to update products.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
   async function adjust(level: InventoryLevel, quantity: number, note: string) {
-    const response = await fetch("/api/admin/inventory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inventoryLevelId: level.id, quantity, note }) });
-    if (!response.ok) return setError((await response.json()).error ?? "Unable to adjust inventory.");
+    const response = await fetch("/api/admin/inventory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inventoryLevelId: level.id, quantity, note }),
+    });
+    if (!response.ok)
+      return setError(
+        (await response.json()).error ?? "Unable to adjust inventory.",
+      );
     if (editing) await edit(editing);
   }
-  const updateImage = (index: number, key: keyof Image, value: string) => setForm((current) => ({ ...current, images: current.images.map((image, i) => i === index ? { ...image, [key]: value } : image) }));
-  const updateGroup = (index: number, key: keyof OptionGroup, value: string | boolean | number) => setForm((current) => ({ ...current, optionGroups: current.optionGroups.map((group, i) => i === index ? { ...group, [key]: value } : group) }));
-  const updateValue = (groupIndex: number, valueIndex: number, key: keyof OptionValue, value: string | boolean | number) => setForm((current) => ({ ...current, optionGroups: current.optionGroups.map((group, i) => i === groupIndex ? { ...group, values: group.values.map((option, j) => j === valueIndex ? { ...option, [key]: value } : option) } : group) }));
+  const updateImage = (index: number, key: keyof Image, value: string) =>
+    setForm((current) => ({
+      ...current,
+      images: current.images.map((image, i) =>
+        i === index ? { ...image, [key]: value } : image,
+      ),
+    }));
+  const updateGroup = (
+    index: number,
+    key: keyof OptionGroup,
+    value: string | boolean | number,
+  ) =>
+    setForm((current) => ({
+      ...current,
+      optionGroups: current.optionGroups.map((group, i) =>
+        i === index ? { ...group, [key]: value } : group,
+      ),
+    }));
+  const updateValue = (
+    groupIndex: number,
+    valueIndex: number,
+    key: keyof OptionValue,
+    value: string | boolean | number,
+  ) =>
+    setForm((current) => ({
+      ...current,
+      optionGroups: current.optionGroups.map((group, i) =>
+        i === groupIndex
+          ? {
+              ...group,
+              values: group.values.map((option, j) =>
+                j === valueIndex ? { ...option, [key]: value } : option,
+              ),
+            }
+          : group,
+      ),
+    }));
 
-  return <div className="space-y-6">
-    <form ref={editorRef} onSubmit={submit} className="grid gap-3 rounded-xl border border-black/10 bg-white p-5 md:grid-cols-2"><h2 tabIndex={-1} className="md:col-span-2 text-lg font-bold">{editing ? "Edit product" : "New product"}</h2>
-      <label className="grid gap-1 text-sm font-medium">Category<select required value={form.categoryId} onChange={(event) => change("categoryId", event.target.value)} className="rounded border border-black/15 px-3 py-2 font-normal"><option value="">Select category</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name} / {category.nameAr}</option>)}</select></label>
-      <Input label="Slug" value={form.slug} onChange={(value) => change("slug", value)} required /><Input label="Name (English)" value={form.name} onChange={(value) => change("name", value)} required /><Input label="Name (Arabic)" value={form.nameAr} onChange={(value) => change("nameAr", value)} required /><Input label="Base price (KWD)" type="number" value={form.basePrice} onChange={(value) => change("basePrice", value)} required /><Input label="Compare-at price" type="number" value={form.compareAtPrice} onChange={(value) => change("compareAtPrice", value)} /><Input label="SKU" value={form.sku} onChange={(value) => change("sku", value)} /><Input label="Primary image path" value={form.primaryImagePath} onChange={(value) => change("primaryImagePath", value)} /><Input label="Description (English)" value={form.description} onChange={(value) => change("description", value)} /><Input label="Description (Arabic)" value={form.descriptionAr} onChange={(value) => change("descriptionAr", value)} /><Input label="Short description (English)" value={form.shortDescription} onChange={(value) => change("shortDescription", value)} /><Input label="Short description (Arabic)" value={form.shortDescriptionAr} onChange={(value) => change("shortDescriptionAr", value)} /><Input label="Sort order" type="number" value={form.sortOrder} onChange={(value) => change("sortOrder", Number(value))} />
-      <div className="grid grid-cols-2 gap-2 text-sm">{(["isActive", "isFeatured", "allowPreorder", "isDeliveryEnabled", "isPickupEnabled"] as const).map((key) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={form[key]} onChange={(event) => change(key, event.target.checked)} />{key}</label>)}</div><Input label="Minimum quantity" type="number" value={form.minQuantity} onChange={(value) => change("minQuantity", Number(value))} /><Input label="Maximum quantity" type="number" value={form.maxQuantity} onChange={(value) => change("maxQuantity", value)} /><Input label="Quantity increment" type="number" value={form.quantityIncrement} onChange={(value) => change("quantityIncrement", Number(value))} />
-      {editing && <EditorDetails form={form} updateImage={updateImage} updateGroup={updateGroup} updateValue={updateValue} setForm={setForm} adjust={adjust} />}
-      <div className="flex gap-2 md:col-span-2"><button disabled={busy} className="rounded bg-brand px-4 py-2 font-semibold disabled:opacity-50">{editing ? "Save product" : "Create product"}</button>{editing && <button type="button" onClick={() => { setEditing(null); setForm(empty); }} className="rounded border px-4 py-2">Cancel</button>}</div>
-    </form>
-    <div className="grid gap-3 rounded-xl border border-black/10 bg-white p-4 md:grid-cols-4"><Input label="Search" value={filters.query} onChange={(value) => changeFilter("query", value)} /><Filter label="Status" value={filters.status} onChange={(value) => changeFilter("status", value)} options={[["all", "All statuses"], ["active", "Active"], ["inactive", "Inactive"]]} /><Filter label="View" value={filters.archived} onChange={(value) => changeFilter("archived", value)} options={[["active", "Current"], ["archived", "Archived"], ["all", "All"]]} /><Filter label="Stock" value={filters.stock} onChange={(value) => changeFilter("stock", value)} options={[["all", "All stock"], ["in-stock", "In stock"], ["out-of-stock", "Out of stock"]]} /><label className="grid gap-1 text-sm font-medium">Category<select value={filters.categoryId} onChange={(event) => changeFilter("categoryId", event.target.value)} className="rounded border border-black/15 px-3 py-2 font-normal"><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><Filter label="Sort" value={filters.sort} onChange={(value) => changeFilter("sort", value)} options={[["sortOrder", "Sort order"], ["name", "Name"], ["basePrice", "Price"], ["updatedAt", "Updated"]]} /><Filter label="Direction" value={filters.direction} onChange={(value) => changeFilter("direction", value)} options={[["asc", "Ascending"], ["desc", "Descending"]]} /><div className="flex flex-wrap items-end gap-2 md:col-span-4"><label className="grid gap-1 text-sm font-medium">Saved views<select aria-label="Load saved view" value="" onChange={(event) => { const view = savedViews.find((entry) => entry.name === event.target.value); if (view) { setPage(1); setFilters(view.filters); } }} className="rounded border border-black/15 px-3 py-2 font-normal"><option value="">Load a saved view</option>{savedViews.map((view) => <option key={view.name} value={view.name}>{view.name}</option>)}</select></label><label className="grid gap-1 text-sm font-medium">Save current filters as<input value={viewName} onChange={(event) => setViewName(event.target.value)} maxLength={60} className="rounded border border-black/15 px-3 py-2 font-normal" /></label><button type="button" onClick={saveView} className="rounded border border-brand px-3 py-2 text-sm font-semibold text-brand">Save view</button>{savedViews.map((view) => <button key={view.name} type="button" onClick={() => removeView(view.name)} className="text-sm text-[#666] underline">Remove {view.name}</button>)}</div></div>
-    {selected.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-white p-3 text-sm"><b>{selected.length} selected</b><select aria-label="Bulk category" value={bulkCategoryId} onChange={(event) => setBulkCategoryId(event.target.value)} className="rounded border px-2 py-1"><option value="">Category for bulk action</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><input aria-label="Bulk base price" type="number" min="0" step="any" value={bulkPrice} onChange={(event) => setBulkPrice(event.target.value)} placeholder="Base price for bulk action" className="w-48 rounded border px-2 py-1" />{["activate", "draft", "archive", "restore", "category", "price"].map((action) => <button key={action} disabled={busy} onClick={() => void bulk(action)} className="rounded border border-brand px-3 py-1 capitalize text-brand">{action}</button>)}</div>}{error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-    <div className="overflow-x-auto rounded-xl border border-black/10 bg-white"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th className="p-3"><input aria-label="Select page" type="checkbox" checked={products.length > 0 && products.every((product) => selected.includes(product.id))} onChange={(event) => setSelected(event.target.checked ? [...new Set([...selected, ...products.map((product) => product.id)])] : selected.filter((id) => !products.some((product) => product.id === id)))} /></th><th className="p-3">Product</th><th className="p-3">Category</th><th className="p-3">Price</th><th className="p-3">Status</th><th className="p-3" /></tr></thead><tbody>{products.map((product) => <tr key={product.id} className="border-b last:border-0"><td className="p-3"><input aria-label={`Select ${product.name}`} type="checkbox" checked={selected.includes(product.id)} onChange={() => setSelected((current) => current.includes(product.id) ? current.filter((id) => id !== product.id) : [...current, product.id])} /></td><td className="p-3"><p className="font-medium">{product.name}</p><p className="text-xs text-black/60">{product.slug}</p></td><td className="p-3">{product.category.name}</td><td className="p-3">{product.basePrice}</td><td className="p-3">{product.archivedAt ? "Archived" : product.isActive ? "Active" : "Draft"}</td><td className="p-3 text-right">{product.archivedAt ? <button onClick={() => void restore(product.id)} className="text-brand">Restore</button> : <><button onClick={() => void edit(product.id)} className="mr-3 text-brand">Edit</button><button onClick={() => void archive(product.id)} className="text-red-600">Archive</button></>}</td></tr>)}</tbody></table>{products.length === 0 && <p className="p-4 text-center text-sm text-black/60">No products found.</p>}</div>
-    <div className="flex items-center justify-between text-sm"><span>{total} products</span><div className="flex items-center gap-3"><button disabled={page <= 1} onClick={() => { const next = page - 1; setPage(next); void load(next); }} className="rounded border px-3 py-1 disabled:opacity-40">Previous</button><span>Page {page} of {totalPages}</span><button disabled={page >= totalPages} onClick={() => { const next = page + 1; setPage(next); void load(next); }} className="rounded border px-3 py-1 disabled:opacity-40">Next</button></div></div>
-  </div>;
+  return (
+    <div className="space-y-6">
+      <form
+        ref={editorRef}
+        onSubmit={submit}
+        className={`grid gap-3 rounded-xl border p-5 md:grid-cols-2 ${editing ? "border-brand ring-2 ring-brand/20" : "border-black/10"}`}
+      >
+        <h2 tabIndex={-1} className="md:col-span-2 text-lg font-bold">
+          {editing ? `Editing product: ${form.name}` : "New product"}
+        </h2>
+        <label className="grid gap-1 text-sm font-medium">
+          Category
+          <select
+            required
+            value={form.categoryId}
+            onChange={(event) => change("categoryId", event.target.value)}
+            className="rounded border border-black/15 px-3 py-2 font-normal"
+          >
+            <option value="">Select category</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name} / {category.nameAr}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Input
+          label="Slug"
+          value={form.slug}
+          onChange={(value) => change("slug", value)}
+          required
+        />
+        <Input
+          label="Name (English)"
+          value={form.name}
+          onChange={(value) => change("name", value)}
+          required
+        />
+        <Input
+          label="Name (Arabic)"
+          value={form.nameAr}
+          onChange={(value) => change("nameAr", value)}
+          required
+        />
+        <Input
+          label="Base price (KWD)"
+          type="number"
+          value={form.basePrice}
+          onChange={(value) => change("basePrice", value)}
+          required
+        />
+        <Input
+          label="Compare-at price"
+          type="number"
+          value={form.compareAtPrice}
+          onChange={(value) => change("compareAtPrice", value)}
+        />
+        <Input
+          label="SKU"
+          value={form.sku}
+          onChange={(value) => change("sku", value)}
+        />
+        <Input
+          label="Primary image path"
+          value={form.primaryImagePath}
+          onChange={(value) => change("primaryImagePath", value)}
+        />
+        <label className="grid gap-1 text-sm font-medium md:col-span-2">Description (English)<textarea rows={12} value={form.description} onChange={(event) => change("description", event.target.value)} className="min-h-64 rounded border border-black/15 px-3 py-2 font-normal" /></label>
+        <label className="grid gap-1 text-sm font-medium md:col-span-2">Description (Arabic)<textarea rows={12} dir="rtl" value={form.descriptionAr} onChange={(event) => change("descriptionAr", event.target.value)} className="min-h-64 rounded border border-black/15 px-3 py-2 text-right font-normal" /></label>
+        <Input
+          label="Short description (English)"
+          value={form.shortDescription}
+          onChange={(value) => change("shortDescription", value)}
+        />
+        <Input
+          label="Short description (Arabic)"
+          value={form.shortDescriptionAr}
+          onChange={(value) => change("shortDescriptionAr", value)}
+        />
+        <Input
+          label="Sort order"
+          type="number"
+          value={form.sortOrder}
+          onChange={(value) => change("sortOrder", Number(value))}
+        />
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          {(
+            [
+              "isActive",
+              "isFeatured",
+              "allowPreorder",
+              "isDeliveryEnabled",
+              "isPickupEnabled",
+            ] as const
+          ).map((key) => (
+            <label key={key} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={form[key]}
+                onChange={(event) => change(key, event.target.checked)}
+              />
+              {key}
+            </label>
+          ))}
+        </div>
+        <Input
+          label="Minimum quantity"
+          type="number"
+          value={form.minQuantity}
+          onChange={(value) => change("minQuantity", Number(value))}
+        />
+        <Input
+          label="Maximum quantity"
+          type="number"
+          value={form.maxQuantity}
+          onChange={(value) => change("maxQuantity", value)}
+        />
+        <Input
+          label="Quantity increment"
+          type="number"
+          value={form.quantityIncrement}
+          onChange={(value) => change("quantityIncrement", Number(value))}
+        />
+        {editing && (
+          <EditorDetails
+            form={form}
+            updateImage={updateImage}
+            updateGroup={updateGroup}
+            updateValue={updateValue}
+            setForm={setForm}
+            adjust={adjust}
+          />
+        )}
+        <div className="flex gap-2 md:col-span-2">
+          <button
+            disabled={busy}
+            className="rounded bg-brand px-4 py-2 font-semibold disabled:opacity-50"
+          >
+            {editing ? "Save product" : "Create product"}
+          </button>
+          {editing && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setForm(empty);
+              }}
+              className="rounded border px-4 py-2"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      </form>
+      <div className={editId ? "hidden" : "grid gap-3 rounded-xl border border-black/10 bg-white p-4 md:grid-cols-4"}>
+        <Input
+          label="Search"
+          value={filters.query}
+          onChange={(value) => changeFilter("query", value)}
+        />
+        <Filter
+          label="Status"
+          value={filters.status}
+          onChange={(value) => changeFilter("status", value)}
+          options={[
+            ["all", "All statuses"],
+            ["active", "Active"],
+            ["inactive", "Inactive"],
+          ]}
+        />
+        <Filter
+          label="View"
+          value={filters.archived}
+          onChange={(value) => changeFilter("archived", value)}
+          options={[
+            ["active", "Current"],
+            ["archived", "Archived"],
+            ["all", "All"],
+          ]}
+        />
+        <Filter
+          label="Stock"
+          value={filters.stock}
+          onChange={(value) => changeFilter("stock", value)}
+          options={[
+            ["all", "All stock"],
+            ["in-stock", "In stock"],
+            ["out-of-stock", "Out of stock"],
+          ]}
+        />
+        <label className="grid gap-1 text-sm font-medium">
+          Category
+          <select
+            value={filters.categoryId}
+            onChange={(event) => changeFilter("categoryId", event.target.value)}
+            className="rounded border border-black/15 px-3 py-2 font-normal"
+          >
+            <option value="">All categories</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Filter
+          label="Sort"
+          value={filters.sort}
+          onChange={(value) => changeFilter("sort", value)}
+          options={[
+            ["sortOrder", "Sort order"],
+            ["name", "Name"],
+            ["basePrice", "Price"],
+            ["updatedAt", "Updated"],
+          ]}
+        />
+        <Filter
+          label="Direction"
+          value={filters.direction}
+          onChange={(value) => changeFilter("direction", value)}
+          options={[
+            ["asc", "Ascending"],
+            ["desc", "Descending"],
+          ]}
+        />
+        <div className="flex flex-wrap items-end gap-2 md:col-span-4">
+          <label className="grid gap-1 text-sm font-medium">
+            Saved views
+            <select
+              aria-label="Load saved view"
+              value=""
+              onChange={(event) => {
+                const view = savedViews.find(
+                  (entry) => entry.name === event.target.value,
+                );
+                if (view) {
+                  setPage(1);
+                  setFilters(view.filters);
+                }
+              }}
+              className="rounded border border-black/15 px-3 py-2 font-normal"
+            >
+              <option value="">Load a saved view</option>
+              {savedViews.map((view) => (
+                <option key={view.name} value={view.name}>
+                  {view.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Save current filters as
+            <input
+              value={viewName}
+              onChange={(event) => setViewName(event.target.value)}
+              maxLength={60}
+              className="rounded border border-black/15 px-3 py-2 font-normal"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={saveView}
+            className="rounded border border-brand px-3 py-2 text-sm font-semibold text-brand"
+          >
+            Save view
+          </button>
+          {savedViews.map((view) => (
+            <button
+              key={view.name}
+              type="button"
+              onClick={() => removeView(view.name)}
+              className="text-sm text-[#666] underline"
+            >
+              Remove {view.name}
+            </button>
+          ))}
+        </div>
+      </div>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-white p-3 text-sm">
+          <b>{selected.length} selected</b>
+          <select
+            aria-label="Bulk category"
+            value={bulkCategoryId}
+            onChange={(event) => setBulkCategoryId(event.target.value)}
+            className="rounded border px-2 py-1"
+          >
+            <option value="">Category for bulk action</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+          <input
+            aria-label="Bulk base price"
+            type="number"
+            min="0"
+            step="any"
+            value={bulkPrice}
+            onChange={(event) => setBulkPrice(event.target.value)}
+            placeholder="Base price for bulk action"
+            className="w-48 rounded border px-2 py-1"
+          />
+          {["activate", "draft", "archive", "restore", "category", "price"].map(
+            (action) => (
+              <button
+                key={action}
+                disabled={busy}
+                onClick={() => void bulk(action)}
+                className="rounded border border-brand px-3 py-1 capitalize text-brand"
+              >
+                {action}
+              </button>
+            ),
+          )}
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-red-600">
+          {error}
+        </p>
+      )}
+      <div className={editId ? "hidden" : "overflow-x-auto rounded-xl border border-black/10 bg-white"}>
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b">
+              <th className="p-3">
+                <input
+                  aria-label="Select page"
+                  type="checkbox"
+                  checked={
+                    products.length > 0 &&
+                    products.every((product) => selected.includes(product.id))
+                  }
+                  onChange={(event) =>
+                    setSelected(
+                      event.target.checked
+                        ? [
+                            ...new Set([
+                              ...selected,
+                              ...products.map((product) => product.id),
+                            ]),
+                          ]
+                        : selected.filter(
+                            (id) =>
+                              !products.some((product) => product.id === id),
+                          ),
+                    )
+                  }
+                />
+              </th>
+              <th className="p-3">Product</th>
+              <th className="p-3">Category</th>
+              <th className="p-3">Price</th>
+              <th className="p-3">Status</th>
+              <th className="p-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((product) => (
+              <tr key={product.id} className="border-b last:border-0">
+                <td className="p-3">
+                  <input
+                    aria-label={`Select ${product.name}`}
+                    type="checkbox"
+                    checked={selected.includes(product.id)}
+                    onChange={() =>
+                      setSelected((current) =>
+                        current.includes(product.id)
+                          ? current.filter((id) => id !== product.id)
+                          : [...current, product.id],
+                      )
+                    }
+                  />
+                </td>
+                <td className="p-3">
+                  <p className="font-medium">{product.name}</p>
+                  <p className="text-xs text-black/60">{product.slug}</p>
+                </td>
+                <td className="p-3">{product.category.name}</td>
+                <td className="p-3">{product.basePrice}</td>
+                <td className="p-3">
+                  {product.archivedAt
+                    ? "Archived"
+                    : product.isActive
+                      ? "Active"
+                      : "Draft"}
+                </td>
+                <td className="p-3 text-right">
+                  {product.archivedAt ? (
+                    <button
+                      onClick={() => void restore(product.id)}
+                      className="text-brand"
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => void edit(product.id)}
+                        className="mr-3 text-brand"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => void archive(product.id)}
+                        className="text-red-600"
+                      >
+                        Archive
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {products.length === 0 && (
+          <p className="p-4 text-center text-sm text-black/60">
+            No products found.
+          </p>
+        )}
+      </div>
+      <div className={editId ? "hidden" : "flex items-center justify-between text-sm"}>
+        <span>{total} products</span>
+        <div className="flex items-center gap-3">
+          <button
+            disabled={page <= 1}
+            onClick={() => {
+              const next = page - 1;
+              setPage(next);
+              void load(next);
+            }}
+            className="rounded border px-3 py-1 disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => {
+              const next = page + 1;
+              setPage(next);
+              void load(next);
+            }}
+            className="rounded border px-3 py-1 disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function EditorDetails({ form, updateImage, updateGroup, updateValue, setForm, adjust }: { form: Form; updateImage: (index: number, key: keyof Image, value: string) => void; updateGroup: (index: number, key: keyof OptionGroup, value: string | boolean | number) => void; updateValue: (group: number, valueIndex: number, key: keyof OptionValue, value: string | boolean | number) => void; setForm: React.Dispatch<React.SetStateAction<Form>>; adjust: (level: InventoryLevel, quantity: number, note: string) => Promise<void> }) {
-  return <div className="space-y-4 md:col-span-2"><section className="rounded border border-black/10 p-4"><div className="mb-3 flex justify-between"><h3 className="font-semibold">Ordered images</h3><button type="button" onClick={() => setForm((current) => ({ ...current, images: [...current.images, { path: "", alt: "", altAr: "", sortOrder: current.images.length }] }))} className="text-sm text-brand">Add image</button></div>{form.images.map((image, index) => <div key={index} className="mb-2 grid gap-2 md:grid-cols-4"><input required placeholder="Path" value={image.path} onChange={(event) => updateImage(index, "path", event.target.value)} className="rounded border px-2 py-1" /><input placeholder="Alt (English)" value={image.alt} onChange={(event) => updateImage(index, "alt", event.target.value)} className="rounded border px-2 py-1" /><input placeholder="Alt (Arabic)" value={image.altAr} onChange={(event) => updateImage(index, "altAr", event.target.value)} className="rounded border px-2 py-1" /><button type="button" onClick={() => setForm((current) => ({ ...current, images: current.images.filter((_, i) => i !== index) }))} className="text-left text-red-600">Remove</button></div>)}</section>
-    <section className="rounded border border-black/10 p-4"><div className="mb-3 flex justify-between"><h3 className="font-semibold">Option groups</h3><button type="button" onClick={() => setForm((current) => ({ ...current, optionGroups: [...current.optionGroups, blankGroup(current.optionGroups.length)] }))} className="text-sm text-brand">Add group</button></div>{form.optionGroups.map((group, groupIndex) => <div key={group.id ?? groupIndex} className="mb-4 rounded border border-black/10 p-3"><div className="grid gap-2 md:grid-cols-3"><input required placeholder="Name (English)" value={group.name} onChange={(event) => updateGroup(groupIndex, "name", event.target.value)} className="rounded border px-2 py-1" /><input required placeholder="Name (Arabic)" value={group.nameAr} onChange={(event) => updateGroup(groupIndex, "nameAr", event.target.value)} className="rounded border px-2 py-1" /><button type="button" onClick={() => setForm((current) => ({ ...current, optionGroups: current.optionGroups.filter((_, i) => i !== groupIndex) }))} className="text-left text-red-600">Remove group</button><label><input type="checkbox" checked={group.isRequired} onChange={(event) => updateGroup(groupIndex, "isRequired", event.target.checked)} /> Required</label><label><input type="checkbox" checked={group.allowsMultiple} onChange={(event) => updateGroup(groupIndex, "allowsMultiple", event.target.checked)} /> Multiple selections</label><input type="number" min="0" placeholder="Minimum" value={group.minSelections} onChange={(event) => updateGroup(groupIndex, "minSelections", Number(event.target.value))} className="rounded border px-2 py-1" /><input type="number" min="1" placeholder="Maximum" value={group.maxSelections} onChange={(event) => updateGroup(groupIndex, "maxSelections", event.target.value)} className="rounded border px-2 py-1" /></div><div className="mt-3 space-y-2">{group.values.map((value, valueIndex) => <div key={value.id ?? valueIndex} className="grid gap-2 md:grid-cols-5"><input required placeholder="Value" value={value.value} onChange={(event) => updateValue(groupIndex, valueIndex, "value", event.target.value)} className="rounded border px-2 py-1" /><input required placeholder="Arabic value" value={value.valueAr} onChange={(event) => updateValue(groupIndex, valueIndex, "valueAr", event.target.value)} className="rounded border px-2 py-1" /><input type="number" step="any" placeholder="Price delta" value={value.priceDelta} onChange={(event) => updateValue(groupIndex, valueIndex, "priceDelta", Number(event.target.value))} className="rounded border px-2 py-1" /><label><input type="checkbox" checked={value.isActive} onChange={(event) => updateValue(groupIndex, valueIndex, "isActive", event.target.checked)} /> Active</label><button type="button" onClick={() => setForm((current) => ({ ...current, optionGroups: current.optionGroups.map((entry, i) => i === groupIndex ? { ...entry, values: entry.values.filter((_, j) => j !== valueIndex) } : entry) }))} className="text-left text-red-600">Remove</button></div>)}<button type="button" onClick={() => setForm((current) => ({ ...current, optionGroups: current.optionGroups.map((entry, i) => i === groupIndex ? { ...entry, values: [...entry.values, blankValue(entry.values.length)] } : entry) }))} className="text-sm text-brand">Add value</button></div></div>)}</section>
-    <section className="rounded border border-black/10 p-4"><div className="mb-3 flex justify-between"><div><h3 className="font-semibold">Sellable variants</h3><p className="text-xs text-black/60">Removing a variant retires it; stock and order history are retained.</p></div><button type="button" onClick={() => setForm((current) => ({ ...current, variants: [...current.variants, blankVariant()] }))} className="text-sm text-brand">Add variant</button></div>{form.variants.map((variant, index) => <div key={variant.id ?? index} className="mb-2 grid gap-2 rounded border border-black/10 p-2 md:grid-cols-5"><input required placeholder="SKU" value={variant.sku} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, sku: event.target.value } : item) }))} className="rounded border px-2 py-1" /><input placeholder="Name (English)" value={variant.name} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, name: event.target.value } : item) }))} className="rounded border px-2 py-1" /><input placeholder="Name (Arabic)" value={variant.nameAr} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, nameAr: event.target.value } : item) }))} className="rounded border px-2 py-1" /><input required type="number" min="0" step="any" placeholder="Price" value={variant.price} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, price: event.target.value } : item) }))} className="rounded border px-2 py-1" /><div className="flex gap-2"><label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={variant.isActive} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, isActive: event.target.checked } : item) }))} />Active</label><button type="button" onClick={() => setForm((current) => ({ ...current, variants: current.variants.filter((_, i) => i !== index) }))} className="text-sm text-red-600">Retire</button></div><input placeholder="Barcode" value={variant.barcode} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, barcode: event.target.value } : item) }))} className="rounded border px-2 py-1" /><input type="number" min="0" step="any" placeholder="Compare-at" value={variant.compareAtPrice} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, compareAtPrice: event.target.value } : item) }))} className="rounded border px-2 py-1" /><input type="number" min="0" step="any" placeholder="Cost" value={variant.cost} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, cost: event.target.value } : item) }))} className="rounded border px-2 py-1" /><input type="number" min="0" step="any" placeholder="Weight" value={variant.weight} onChange={(event) => setForm((current) => ({ ...current, variants: current.variants.map((item, i) => i === index ? { ...item, weight: event.target.value } : item) }))} className="rounded border px-2 py-1" /></div>)}{form.variants.length === 0 && <p className="text-sm text-black/60">The product default variant is managed from its main price and SKU fields.</p>}</section>
-    <section className="rounded border border-black/10 p-4"><h3 className="mb-2 font-semibold">Branch stock</h3>{form.inventoryLevels.map((level) => <BranchStockAdjustment key={level.id} level={level} adjust={adjust} />)}{form.inventoryLevels.length === 0 && <p className="text-sm text-black/60">No branch inventory levels are configured for this product.</p>}</section>
-  </div>;
+function EditorDetails({
+  form,
+  updateImage,
+  updateGroup,
+  updateValue,
+  setForm,
+  adjust,
+}: {
+  form: Form;
+  updateImage: (index: number, key: keyof Image, value: string) => void;
+  updateGroup: (
+    index: number,
+    key: keyof OptionGroup,
+    value: string | boolean | number,
+  ) => void;
+  updateValue: (
+    group: number,
+    valueIndex: number,
+    key: keyof OptionValue,
+    value: string | boolean | number,
+  ) => void;
+  setForm: React.Dispatch<React.SetStateAction<Form>>;
+  adjust: (
+    level: InventoryLevel,
+    quantity: number,
+    note: string,
+  ) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-4 md:col-span-2">
+      <section className="rounded border border-black/10 p-4">
+        <div className="mb-3 flex justify-between">
+          <h3 className="font-semibold">Ordered images</h3>
+          <button
+            type="button"
+            onClick={() =>
+              setForm((current) => ({
+                ...current,
+                images: [
+                  ...current.images,
+                  {
+                    path: "",
+                    alt: "",
+                    altAr: "",
+                    sortOrder: current.images.length,
+                  },
+                ],
+              }))
+            }
+            className="text-sm text-brand"
+          >
+            Add image
+          </button>
+        </div>
+        {form.images.map((image, index) => (
+          <div key={index} className="mb-2 grid gap-2 md:grid-cols-4">
+            <input
+              required
+              placeholder="Path"
+              value={image.path}
+              onChange={(event) =>
+                updateImage(index, "path", event.target.value)
+              }
+              className="rounded border px-2 py-1"
+            />
+            <input
+              placeholder="Alt (English)"
+              value={image.alt}
+              onChange={(event) =>
+                updateImage(index, "alt", event.target.value)
+              }
+              className="rounded border px-2 py-1"
+            />
+            <input
+              placeholder="Alt (Arabic)"
+              value={image.altAr}
+              onChange={(event) =>
+                updateImage(index, "altAr", event.target.value)
+              }
+              className="rounded border px-2 py-1"
+            />
+            <button
+              type="button"
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  images: current.images.filter((_, i) => i !== index),
+                }))
+              }
+              className="text-left text-red-600"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </section>
+      <section className="rounded border border-black/10 p-4">
+        <div className="mb-3 flex justify-between">
+          <h3 className="font-semibold">Option groups</h3>
+          <button
+            type="button"
+            onClick={() =>
+              setForm((current) => ({
+                ...current,
+                optionGroups: [
+                  ...current.optionGroups,
+                  blankGroup(current.optionGroups.length),
+                ],
+              }))
+            }
+            className="text-sm text-brand"
+          >
+            Add group
+          </button>
+        </div>
+        {form.optionGroups.map((group, groupIndex) => (
+          <div
+            key={group.id ?? groupIndex}
+            className="mb-4 rounded border border-black/10 p-3"
+          >
+            <div className="grid gap-2 md:grid-cols-3">
+              <input
+                required
+                placeholder="Name (English)"
+                value={group.name}
+                onChange={(event) =>
+                  updateGroup(groupIndex, "name", event.target.value)
+                }
+                className="rounded border px-2 py-1"
+              />
+              <input
+                required
+                placeholder="Name (Arabic)"
+                value={group.nameAr}
+                onChange={(event) =>
+                  updateGroup(groupIndex, "nameAr", event.target.value)
+                }
+                className="rounded border px-2 py-1"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    optionGroups: current.optionGroups.filter(
+                      (_, i) => i !== groupIndex,
+                    ),
+                  }))
+                }
+                className="text-left text-red-600"
+              >
+                Remove group
+              </button>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={group.isRequired}
+                  onChange={(event) =>
+                    updateGroup(groupIndex, "isRequired", event.target.checked)
+                  }
+                />{" "}
+                Required
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={group.allowsMultiple}
+                  onChange={(event) =>
+                    updateGroup(
+                      groupIndex,
+                      "allowsMultiple",
+                      event.target.checked,
+                    )
+                  }
+                />{" "}
+                Multiple selections
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="Minimum"
+                value={group.minSelections}
+                onChange={(event) =>
+                  updateGroup(
+                    groupIndex,
+                    "minSelections",
+                    Number(event.target.value),
+                  )
+                }
+                className="rounded border px-2 py-1"
+              />
+              <input
+                type="number"
+                min="1"
+                placeholder="Maximum"
+                value={group.maxSelections}
+                onChange={(event) =>
+                  updateGroup(groupIndex, "maxSelections", event.target.value)
+                }
+                className="rounded border px-2 py-1"
+              />
+            </div>
+            <div className="mt-3 space-y-2">
+              {group.values.map((value, valueIndex) => (
+                <div
+                  key={value.id ?? valueIndex}
+                  className="grid gap-2 md:grid-cols-5"
+                >
+                  <input
+                    required
+                    placeholder="Value"
+                    value={value.value}
+                    onChange={(event) =>
+                      updateValue(
+                        groupIndex,
+                        valueIndex,
+                        "value",
+                        event.target.value,
+                      )
+                    }
+                    className="rounded border px-2 py-1"
+                  />
+                  <input
+                    required
+                    placeholder="Arabic value"
+                    value={value.valueAr}
+                    onChange={(event) =>
+                      updateValue(
+                        groupIndex,
+                        valueIndex,
+                        "valueAr",
+                        event.target.value,
+                      )
+                    }
+                    className="rounded border px-2 py-1"
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Price delta"
+                    value={value.priceDelta}
+                    onChange={(event) =>
+                      updateValue(
+                        groupIndex,
+                        valueIndex,
+                        "priceDelta",
+                        Number(event.target.value),
+                      )
+                    }
+                    className="rounded border px-2 py-1"
+                  />
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={value.isActive}
+                      onChange={(event) =>
+                        updateValue(
+                          groupIndex,
+                          valueIndex,
+                          "isActive",
+                          event.target.checked,
+                        )
+                      }
+                    />{" "}
+                    Active
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        optionGroups: current.optionGroups.map((entry, i) =>
+                          i === groupIndex
+                            ? {
+                                ...entry,
+                                values: entry.values.filter(
+                                  (_, j) => j !== valueIndex,
+                                ),
+                              }
+                            : entry,
+                        ),
+                      }))
+                    }
+                    className="text-left text-red-600"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    optionGroups: current.optionGroups.map((entry, i) =>
+                      i === groupIndex
+                        ? {
+                            ...entry,
+                            values: [
+                              ...entry.values,
+                              blankValue(entry.values.length),
+                            ],
+                          }
+                        : entry,
+                    ),
+                  }))
+                }
+                className="text-sm text-brand"
+              >
+                Add value
+              </button>
+            </div>
+          </div>
+        ))}
+      </section>
+      <section className="rounded border border-black/10 p-4">
+        <div className="mb-3 flex justify-between">
+          <div>
+            <h3 className="font-semibold">Sellable variants</h3>
+            <p className="text-xs text-black/60">
+              Removing a variant retires it; stock and order history are
+              retained.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setForm((current) => ({
+                ...current,
+                variants: [...current.variants, blankVariant()],
+              }))
+            }
+            className="text-sm text-brand"
+          >
+            Add variant
+          </button>
+        </div>
+        {form.variants.map((variant, index) => (
+          <div
+            key={variant.id ?? index}
+            className="mb-2 grid gap-2 rounded border border-black/10 p-2 md:grid-cols-5"
+          >
+            <input
+              required
+              placeholder="SKU"
+              value={variant.sku}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  variants: current.variants.map((item, i) =>
+                    i === index ? { ...item, sku: event.target.value } : item,
+                  ),
+                }))
+              }
+              className="rounded border px-2 py-1"
+            />
+            <input
+              placeholder="Name (English)"
+              value={variant.name}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  variants: current.variants.map((item, i) =>
+                    i === index ? { ...item, name: event.target.value } : item,
+                  ),
+                }))
+              }
+              className="rounded border px-2 py-1"
+            />
+            <input
+              placeholder="Name (Arabic)"
+              value={variant.nameAr}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  variants: current.variants.map((item, i) =>
+                    i === index
+                      ? { ...item, nameAr: event.target.value }
+                      : item,
+                  ),
+                }))
+              }
+              className="rounded border px-2 py-1"
+            />
+            <input
+              required
+              type="number"
+              min="0"
+              step="any"
+              placeholder="Price"
+              value={variant.price}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  variants: current.variants.map((item, i) =>
+                    i === index ? { ...item, price: event.target.value } : item,
+                  ),
+                }))
+              }
+              className="rounded border px-2 py-1"
+            />
+            <div className="flex gap-2">
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={variant.isActive}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      variants: current.variants.map((item, i) =>
+                        i === index
+                          ? { ...item, isActive: event.target.checked }
+                          : item,
+                      ),
+                    }))
+                  }
+                />
+                Active
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    variants: current.variants.filter((_, i) => i !== index),
+                  }))
+                }
+                className="text-sm text-red-600"
+              >
+                Retire
+              </button>
+            </div>
+            <input
+              placeholder="Barcode"
+              value={variant.barcode}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  variants: current.variants.map((item, i) =>
+                    i === index
+                      ? { ...item, barcode: event.target.value }
+                      : item,
+                  ),
+                }))
+              }
+              className="rounded border px-2 py-1"
+            />
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder="Compare-at"
+              value={variant.compareAtPrice}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  variants: current.variants.map((item, i) =>
+                    i === index
+                      ? { ...item, compareAtPrice: event.target.value }
+                      : item,
+                  ),
+                }))
+              }
+              className="rounded border px-2 py-1"
+            />
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder="Cost"
+              value={variant.cost}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  variants: current.variants.map((item, i) =>
+                    i === index ? { ...item, cost: event.target.value } : item,
+                  ),
+                }))
+              }
+              className="rounded border px-2 py-1"
+            />
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder="Weight"
+              value={variant.weight}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  variants: current.variants.map((item, i) =>
+                    i === index
+                      ? { ...item, weight: event.target.value }
+                      : item,
+                  ),
+                }))
+              }
+              className="rounded border px-2 py-1"
+            />
+          </div>
+        ))}
+        {form.variants.length === 0 && (
+          <p className="text-sm text-black/60">
+            The product default variant is managed from its main price and SKU
+            fields.
+          </p>
+        )}
+      </section>
+      <section className="rounded border border-black/10 p-4">
+        <h3 className="mb-2 font-semibold">Branch stock</h3>
+        {form.inventoryLevels.map((level) => (
+          <BranchStockAdjustment key={level.id} level={level} adjust={adjust} />
+        ))}
+        {form.inventoryLevels.length === 0 && (
+          <p className="text-sm text-black/60">
+            No branch inventory levels are configured for this product.
+          </p>
+        )}
+      </section>
+    </div>
+  );
 }
 
-function BranchStockAdjustment({ level, adjust }: { level: InventoryLevel; adjust: (level: InventoryLevel, quantity: number, note: string) => Promise<void> }) {
+function BranchStockAdjustment({
+  level,
+  adjust,
+}: {
+  level: InventoryLevel;
+  adjust: (
+    level: InventoryLevel,
+    quantity: number,
+    note: string,
+  ) => Promise<void>;
+}) {
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -148,8 +1613,93 @@ function BranchStockAdjustment({ level, adjust }: { level: InventoryLevel; adjus
     setQuantity("");
     setNote("");
   }
-  return <div className="mb-2 flex flex-wrap items-center gap-2 text-sm"><span className="min-w-44">{level.branch.name}{level.variant && ` - ${level.variant.name ?? level.variant.sku ?? "Default variant"}`} ({level.quantity - level.reserved} available)</span><input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" step="1" placeholder="+/- units" className="w-28 rounded border px-2 py-1" /><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} placeholder="Reason" className="w-48 rounded border px-2 py-1" /><button type="button" disabled={busy || !quantity || !note.trim()} onClick={() => void submit()} className="text-brand disabled:opacity-50">Adjust</button></div>;
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+      <span className="min-w-44">
+        {level.branch.name}
+        {level.variant &&
+          ` - ${level.variant.name ?? level.variant.sku ?? "Default variant"}`}{" "}
+        ({level.quantity - level.reserved} available)
+      </span>
+      <input
+        value={quantity}
+        onChange={(event) => setQuantity(event.target.value)}
+        type="number"
+        step="1"
+        placeholder="+/- units"
+        className="w-28 rounded border px-2 py-1"
+      />
+      <input
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        maxLength={500}
+        placeholder="Reason"
+        className="w-48 rounded border px-2 py-1"
+      />
+      <button
+        type="button"
+        disabled={busy || !quantity || !note.trim()}
+        onClick={() => void submit()}
+        className="text-brand disabled:opacity-50"
+      >
+        Adjust
+      </button>
+    </div>
+  );
 }
 
-function Input({ label, value, onChange, type = "text", required = false }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; required?: boolean }) { return <label className="grid gap-1 text-sm font-medium">{label}<input type={type} required={required} step={type === "number" ? "any" : undefined} value={value} onChange={(event) => onChange(event.target.value)} className="rounded border border-black/15 px-3 py-2 font-normal" /></label>; }
-function Filter({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[][] }) { return <label className="grid gap-1 text-sm font-medium">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="rounded border border-black/15 px-3 py-2 font-normal">{options.map(([optionValue, text]) => <option key={optionValue} value={optionValue}>{text}</option>)}</select></label>; }
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required = false,
+}: {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="grid gap-1 text-sm font-medium">
+      {label}
+      <input
+        type={type}
+        required={required}
+        step={type === "number" ? "any" : undefined}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="rounded border border-black/15 px-3 py-2 font-normal"
+      />
+    </label>
+  );
+}
+function Filter({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[][];
+}) {
+  return (
+    <label className="grid gap-1 text-sm font-medium">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="rounded border border-black/15 px-3 py-2 font-normal"
+      >
+        {options.map(([optionValue, text]) => (
+          <option key={optionValue} value={optionValue}>
+            {text}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}

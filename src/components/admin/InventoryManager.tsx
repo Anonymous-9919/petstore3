@@ -18,11 +18,11 @@ type InventoryResponse = { inventoryLevels: InventoryLevel[]; pagination: { page
 
 const initialResponse: InventoryResponse = { inventoryLevels: [], pagination: { page: 1, pageSize: 25, total: 0, totalPages: 0 } };
 
-export function InventoryManager({ branches, categories }: { branches: Option[]; categories: Option[] }) {
+export function InventoryManager({ branches, categories, initialStock = "all" }: { branches: Option[]; categories: Option[]; initialStock?: string }) {
   const [data, setData] = useState<InventoryResponse>(initialResponse);
   const [branchId, setBranchId] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [stock, setStock] = useState("all");
+  const [stock, setStock] = useState(initialStock === "low-stock" ? "low-stock" : "all");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState<string | null>(null);

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type Category = { id: string; name: string; nameAr: string; archivedAt: string | null };
 type Product = { id: string; categoryId: string; slug: string; sku: string | null; name: string; nameAr: string; description: string | null; descriptionAr: string | null; shortDescription: string | null; shortDescriptionAr: string | null; brand: string | null; tags: string[]; seoTitle: string | null; seoTitleAr: string | null; seoDescription: string | null; seoDescriptionAr: string | null; basePrice: string; compareAtPrice: string | null; primaryImagePath: string | null; sortOrder: number; isActive: boolean; isFeatured: boolean; allowPreorder: boolean; isDeliveryEnabled: boolean; isPickupEnabled: boolean; minQuantity: number; maxQuantity: number | null; quantityIncrement: number; archivedAt: string | null; category: { name: string; nameAr: string } };
@@ -20,16 +20,17 @@ const blankValue = (sortOrder: number): OptionValue => ({ value: "", valueAr: ""
 const blankGroup = (sortOrder: number): OptionGroup => ({ name: "", nameAr: "", isRequired: false, allowsMultiple: false, minSelections: 0, maxSelections: "", sortOrder, values: [] });
 const blankVariant = (): Variant => ({ sku: "", barcode: "", name: "", nameAr: "", price: "", compareAtPrice: "", cost: "", weight: "", isActive: true });
 
-export function ProductCatalog({ categories: initialCategories }: { categories: Category[] }) {
+export function ProductCatalog({ categories: initialCategories, initialQuery = "" }: { categories: Category[]; initialQuery?: string }) {
   const [products, setProducts] = useState<Product[]>([]);
   const categories = initialCategories;
   const [form, setForm] = useState<Form>(empty);
-  const [filters, setFilters] = useState<Filters>(initialFilters);
+  const [filters, setFilters] = useState<Filters>({ ...initialFilters, query: initialQuery });
   const [page, setPage] = useState(1); const [totalPages, setTotalPages] = useState(1); const [total, setTotal] = useState(0);
   const [editing, setEditing] = useState<string | null>(null); const [selected, setSelected] = useState<string[]>([]); const [bulkCategoryId, setBulkCategoryId] = useState(""); const [bulkPrice, setBulkPrice] = useState("");
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [viewName, setViewName] = useState("");
+  const editorRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     try {
@@ -85,7 +86,8 @@ export function ProductCatalog({ categories: initialCategories }: { categories: 
       const response = await fetch(`/api/admin/products/${id}`); if (!response.ok) throw new Error((await response.json()).error ?? "Unable to load product.");
       const product = await response.json() as Product & { images: Array<Image & { alt: string | null; altAr: string | null }>; optionGroups: Array<OptionGroup & { values: Array<OptionValue & { priceDelta: string; compareAtDelta: string | null; imagePath: string | null }> }>; variants?: Array<Variant & { isDefault: boolean }>; inventoryLevels: InventoryLevel[] };
       const nextForm = { ...product, sku: product.sku ?? "", description: product.description ?? "", descriptionAr: product.descriptionAr ?? "", shortDescription: product.shortDescription ?? "", shortDescriptionAr: product.shortDescriptionAr ?? "", brand: product.brand ?? "", seoTitle: product.seoTitle ?? "", seoTitleAr: product.seoTitleAr ?? "", seoDescription: product.seoDescription ?? "", seoDescriptionAr: product.seoDescriptionAr ?? "", basePrice: String(product.basePrice), compareAtPrice: product.compareAtPrice ?? "", primaryImagePath: product.primaryImagePath ?? "", maxQuantity: product.maxQuantity == null ? "" : String(product.maxQuantity), images: product.images.map((image) => ({ ...image, alt: image.alt ?? "", altAr: image.altAr ?? "" })), optionGroups: product.optionGroups.map((group) => ({ ...group, maxSelections: group.maxSelections == null ? "" : String(group.maxSelections), values: group.values.map((value) => ({ ...value, priceDelta: Number(value.priceDelta), compareAtDelta: value.compareAtDelta ?? "", imagePath: value.imagePath ?? "" })) })), variants: (product.variants ?? []).filter((variant) => !variant.isDefault).map((variant) => ({ ...variant, sku: variant.sku ?? "", barcode: variant.barcode ?? "", name: variant.name ?? "", nameAr: variant.nameAr ?? "", price: String(variant.price), compareAtPrice: variant.compareAtPrice ?? "", cost: variant.cost ?? "", weight: variant.weight ?? "" })), inventoryLevels: product.inventoryLevels } as Form;
-      setSavedForm(JSON.stringify(nextForm)); setEditing(id); setForm(nextForm);
+       setSavedForm(JSON.stringify(nextForm)); setEditing(id); setForm(nextForm);
+       requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); (editorRef.current?.querySelector("h2") as HTMLElement | null)?.focus(); });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load product."); } finally { setBusy(false); }
   }
   async function archive(id: string) { if (!confirm("Archive this product?")) return; const response = await fetch(`/api/admin/products/${id}`, { method: "DELETE" }); if (!response.ok) setError((await response.json()).error ?? "Unable to archive product."); else await load(page); }
@@ -94,8 +96,12 @@ export function ProductCatalog({ categories: initialCategories }: { categories: 
     if (!selected.length) return; const payload: Record<string, unknown> = { action, productIds: selected };
     if (action === "category") { if (!bulkCategoryId) return setError("Select a category for the bulk category action."); payload.categoryId = bulkCategoryId; }
     if (action === "price") { if (bulkPrice === "") return setError("Enter a base price for the bulk price action."); payload.basePrice = Number(bulkPrice); }
-    setBusy(true); const response = await fetch("/api/admin/products/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); setBusy(false);
-    if (!response.ok) setError((await response.json()).error ?? "Unable to update products."); else { setSelected([]); await load(page); }
+    setBusy(true);
+    try {
+      const response = await fetch("/api/admin/products/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!response.ok) setError((await response.json()).error ?? "Unable to update products."); else { setSelected([]); await load(page); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to update products."); }
+    finally { setBusy(false); }
   }
   async function adjust(level: InventoryLevel, quantity: number, note: string) {
     const response = await fetch("/api/admin/inventory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inventoryLevelId: level.id, quantity, note }) });
@@ -107,7 +113,7 @@ export function ProductCatalog({ categories: initialCategories }: { categories: 
   const updateValue = (groupIndex: number, valueIndex: number, key: keyof OptionValue, value: string | boolean | number) => setForm((current) => ({ ...current, optionGroups: current.optionGroups.map((group, i) => i === groupIndex ? { ...group, values: group.values.map((option, j) => j === valueIndex ? { ...option, [key]: value } : option) } : group) }));
 
   return <div className="space-y-6">
-    <form onSubmit={submit} className="grid gap-3 rounded-xl border border-black/10 bg-white p-5 md:grid-cols-2"><h2 className="md:col-span-2 text-lg font-bold">{editing ? "Edit product" : "New product"}</h2>
+    <form ref={editorRef} onSubmit={submit} className="grid gap-3 rounded-xl border border-black/10 bg-white p-5 md:grid-cols-2"><h2 tabIndex={-1} className="md:col-span-2 text-lg font-bold">{editing ? "Edit product" : "New product"}</h2>
       <label className="grid gap-1 text-sm font-medium">Category<select required value={form.categoryId} onChange={(event) => change("categoryId", event.target.value)} className="rounded border border-black/15 px-3 py-2 font-normal"><option value="">Select category</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name} / {category.nameAr}</option>)}</select></label>
       <Input label="Slug" value={form.slug} onChange={(value) => change("slug", value)} required /><Input label="Name (English)" value={form.name} onChange={(value) => change("name", value)} required /><Input label="Name (Arabic)" value={form.nameAr} onChange={(value) => change("nameAr", value)} required /><Input label="Base price (KWD)" type="number" value={form.basePrice} onChange={(value) => change("basePrice", value)} required /><Input label="Compare-at price" type="number" value={form.compareAtPrice} onChange={(value) => change("compareAtPrice", value)} /><Input label="SKU" value={form.sku} onChange={(value) => change("sku", value)} /><Input label="Primary image path" value={form.primaryImagePath} onChange={(value) => change("primaryImagePath", value)} /><Input label="Description (English)" value={form.description} onChange={(value) => change("description", value)} /><Input label="Description (Arabic)" value={form.descriptionAr} onChange={(value) => change("descriptionAr", value)} /><Input label="Short description (English)" value={form.shortDescription} onChange={(value) => change("shortDescription", value)} /><Input label="Short description (Arabic)" value={form.shortDescriptionAr} onChange={(value) => change("shortDescriptionAr", value)} /><Input label="Sort order" type="number" value={form.sortOrder} onChange={(value) => change("sortOrder", Number(value))} />
       <div className="grid grid-cols-2 gap-2 text-sm">{(["isActive", "isFeatured", "allowPreorder", "isDeliveryEnabled", "isPickupEnabled"] as const).map((key) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={form[key]} onChange={(event) => change(key, event.target.checked)} />{key}</label>)}</div><Input label="Minimum quantity" type="number" value={form.minQuantity} onChange={(value) => change("minQuantity", Number(value))} /><Input label="Maximum quantity" type="number" value={form.maxQuantity} onChange={(value) => change("maxQuantity", value)} /><Input label="Quantity increment" type="number" value={form.quantityIncrement} onChange={(value) => change("quantityIncrement", Number(value))} />

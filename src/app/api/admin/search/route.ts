@@ -55,7 +55,7 @@ export async function GET(request: Request) {
   ]);
 
   const results: SearchResult[] = [
-    ...products.map((product) => ({ type: "product" as const, label: product.name, detail: [product.sku && `SKU: ${product.sku}`, product.category.name].filter(Boolean).join(" | "), href: "/admin/products" })),
+    ...products.map((product) => ({ type: "product" as const, label: product.name, detail: [product.sku && `SKU: ${product.sku}`, product.category.name].filter(Boolean).join(" | "), href: `/admin/products?query=${encodeURIComponent(product.sku ?? product.name)}` })),
     ...categories.map((category) => ({ type: "category" as const, label: category.name, detail: "Category", href: "/admin/categories" })),
     ...orders.map((order) => ({ type: "order" as const, label: order.orderNumber, detail: `${order.contactName} | ${order.contactPhone}`, href: "/admin/orders" })),
     ...customers.map((customer) => ({ type: "customer" as const, label: customer.name, detail: `${customer.email ?? "No email"} | ${customer.phone}`, href: `/admin/customers/${customer.id}` })),

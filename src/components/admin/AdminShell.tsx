@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BadgePercent, Bell, ChartNoAxesCombined, ChevronLeft, CopyCheck, Image, LayoutDashboard,
   LoaderCircle, Menu, Package, PackageCheck, PanelTop, ScrollText, Search, Settings, ShieldCheck, ShoppingBag, Tags, Truck, Users, X,
@@ -30,6 +30,7 @@ function routeDetails(pathname: string, navigation: AdminNavigationGroup[]) {
 
 export function AdminShell({ children, navigation, user }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -142,7 +143,7 @@ export function AdminShell({ children, navigation, user }: Props) {
             <div className="space-y-1">{group.items.map((item) => {
               const Icon = icons[item.icon];
               const active = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(`${item.href}/`));
-              return <Link key={item.href} href={item.href} title={collapsed ? item.label : undefined} aria-current={active ? "page" : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${active ? "bg-brand text-white" : "text-[#555] hover:bg-[#f4f4f1] hover:text-[#262626]"}`}><Icon size={18} aria-hidden="true" className="shrink-0" /><span className={collapsed ? "lg:sr-only" : ""}>{item.label}</span></Link>;
+              return <Link key={item.href} href={item.href} prefetch onMouseEnter={() => router.prefetch(item.href)} onFocus={() => router.prefetch(item.href)} title={collapsed ? item.label : undefined} aria-current={active ? "page" : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${active ? "bg-brand text-white" : "text-[#555] hover:bg-[#f4f4f1] hover:text-[#262626]"}`}><Icon size={18} aria-hidden="true" className="shrink-0" /><span className={collapsed ? "lg:sr-only" : ""}>{item.label}</span></Link>;
             })}</div>
           </div>)}
         </nav>

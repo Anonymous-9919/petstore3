@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Option = { id: string; name: string };
 type InventoryLevel = {
@@ -24,26 +24,37 @@ export function InventoryManager({ branches, categories, initialStock = "all" }:
   const [categoryId, setCategoryId] = useState("");
   const [stock, setStock] = useState(initialStock === "low-stock" ? "low-stock" : "all");
   const [query, setQuery] = useState("");
+  const [deferredQuery, setDeferredQuery] = useState("");
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ledger, setLedger] = useState<{ levelId: string; movements: Movement[]; audits: Audit[] } | null>(null);
+  const inventoryRequest = useRef(0);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDeferredQuery(query), 300);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
 
   useEffect(() => {
     const controller = new AbortController();
+    const request = ++inventoryRequest.current;
     const params = new URLSearchParams({ page: String(page), pageSize: "25", stock });
     if (branchId) params.set("branchId", branchId);
     if (categoryId) params.set("categoryId", categoryId);
-    if (query.trim()) params.set("query", query.trim());
+    if (deferredQuery.trim()) params.set("query", deferredQuery.trim());
     void fetch(`/api/admin/inventory?${params}`, { signal: controller.signal })
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body.error ?? "Unable to load inventory.");
-        setData(body);
+        if (request === inventoryRequest.current) {
+          setData(body);
+          setError(null);
+        }
       })
-      .catch((cause: unknown) => { if (!(cause instanceof DOMException && cause.name === "AbortError")) setError(cause instanceof Error ? cause.message : "Unable to load inventory."); });
+      .catch((cause: unknown) => { if (request === inventoryRequest.current && !(cause instanceof DOMException && cause.name === "AbortError")) setError(cause instanceof Error ? cause.message : "Unable to load inventory."); });
     return () => controller.abort();
-  }, [branchId, categoryId, page, query, stock]);
+  }, [branchId, categoryId, deferredQuery, page, stock]);
 
   function changeFilter(change: () => void) { setPage(1); change(); }
 
@@ -86,14 +97,15 @@ export function InventoryManager({ branches, categories, initialStock = "all" }:
   }
 
   async function reload() {
+    const request = ++inventoryRequest.current;
     const params = new URLSearchParams({ page: String(page), pageSize: "25", stock });
     if (branchId) params.set("branchId", branchId);
     if (categoryId) params.set("categoryId", categoryId);
-    if (query.trim()) params.set("query", query.trim());
+    if (deferredQuery.trim()) params.set("query", deferredQuery.trim());
     const response = await fetch(`/api/admin/inventory?${params}`);
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? "Unable to load inventory.");
-    setData(body);
+    if (request === inventoryRequest.current) setData(body);
   }
 
   return <div className="mt-6 space-y-5">

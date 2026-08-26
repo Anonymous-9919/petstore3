@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type Category = {
   id: string;
@@ -219,6 +220,8 @@ export function ProductCatalog({
   initialQuery?: string;
   editId?: string;
 }) {
+  const router = useRouter();
+  const isDedicatedEdit = Boolean(editId);
   const [products, setProducts] = useState<Product[]>([]);
   const categories = initialCategories;
   const [form, setForm] = useState<Form>(empty);
@@ -226,6 +229,7 @@ export function ProductCatalog({
     ...initialFilters,
     query: initialQuery,
   });
+  const [deferredQuery, setDeferredQuery] = useState(initialQuery);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -235,9 +239,14 @@ export function ProductCatalog({
   const [bulkPrice, setBulkPrice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editLoadState, setEditLoadState] = useState<
+    "loading" | "loaded" | "error"
+  >(editId ? "loading" : "loaded");
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [viewName, setViewName] = useState("");
   const editorRef = useRef<HTMLFormElement>(null);
+  const productRequestController = useRef<AbortController | null>(null);
+  const productRequestVersion = useRef(0);
 
   useEffect(() => {
     try {
@@ -264,17 +273,31 @@ export function ProductCatalog({
     return () => window.removeEventListener("beforeunload", protect);
   }, [dirty]);
 
-  const load = async (nextPage = page) => {
+  function cancelProductRequest() {
+    productRequestController.current?.abort();
+    productRequestController.current = null;
+    productRequestVersion.current += 1;
+  }
+  const load = async (
+    nextPage = page,
+    nextFilters: Filters = { ...filters, query: deferredQuery },
+  ) => {
+    cancelProductRequest();
+    const requestVersion = productRequestVersion.current;
+    const controller = new AbortController();
+    productRequestController.current = controller;
     setError("");
     const params = new URLSearchParams({
       page: String(nextPage),
       pageSize: "25",
-      ...filters,
+      ...nextFilters,
     });
-    if (!filters.query) params.delete("query");
-    if (!filters.categoryId) params.delete("categoryId");
+    if (!nextFilters.query) params.delete("query");
+    if (!nextFilters.categoryId) params.delete("categoryId");
     try {
-      const productResponse = await fetch(`/api/admin/products?${params}`);
+      const productResponse = await fetch(`/api/admin/products?${params}`, {
+        signal: controller.signal,
+      });
       if (!productResponse.ok)
         throw new Error(
           (await productResponse.json()).error ?? "Unable to load products.",
@@ -283,24 +306,49 @@ export function ProductCatalog({
         products: Product[];
         pagination: { total: number; totalPages: number };
       };
+      if (requestVersion !== productRequestVersion.current) return;
       setProducts(data.products);
       setTotal(data.pagination.total);
       setTotalPages(Math.max(1, data.pagination.totalPages));
     } catch (cause) {
+      if (controller.signal.aborted || requestVersion !== productRequestVersion.current)
+        return;
       setError(
         cause instanceof Error ? cause.message : "Unable to load products.",
       );
     }
   };
   useEffect(() => {
-    void load(1);
-  }, [filters]);
+    const timeout = window.setTimeout(
+      () => setDeferredQuery(filters.query),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [filters.query]);
+  useEffect(() => {
+    if (!isDedicatedEdit)
+      void load(1, { ...filters, query: deferredQuery });
+  }, [
+    deferredQuery,
+    filters.archived,
+    filters.categoryId,
+    filters.direction,
+    filters.sort,
+    filters.status,
+    filters.stock,
+    isDedicatedEdit,
+  ]);
+  useEffect(
+    () => () => productRequestController.current?.abort(),
+    [],
+  );
   useEffect(() => {
     if (editId) void edit(editId);
   }, [editId]);
   const change = (key: keyof Form, value: string | boolean | number) =>
     setForm((current) => ({ ...current, [key]: value }));
   const changeFilter = (key: keyof Filters, value: string) => {
+    cancelProductRequest();
     setPage(1);
     setFilters((current) => ({ ...current, [key]: value }));
   };
@@ -402,6 +450,10 @@ export function ProductCatalog({
       setSavedForm(JSON.stringify(empty));
       setForm(empty);
       setEditing(null);
+      if (isDedicatedEdit) {
+        router.push("/admin/products");
+        return;
+      }
       setPage(1);
       await load(1);
     } catch (cause) {
@@ -414,17 +466,20 @@ export function ProductCatalog({
   }
   async function edit(id: string) {
     if (!editId) {
-      window.location.assign(`/admin/products/${id}/edit`);
+      router.push(`/admin/products/${id}/edit`);
       return;
     }
+    setEditLoadState("loading");
     setBusy(true);
     setError("");
     try {
       const response = await fetch(`/api/admin/products/${id}`);
-      if (!response.ok)
+      if (!response.ok) {
+        if (response.status === 404) throw new Error("Product not found.");
         throw new Error(
           (await response.json()).error ?? "Unable to load product.",
         );
+      }
       const product = (await response.json()) as Product & {
         images: Array<Image & { alt: string | null; altAr: string | null }>;
         optionGroups: Array<
@@ -492,6 +547,7 @@ export function ProductCatalog({
       setSavedForm(JSON.stringify(nextForm));
       setEditing(id);
       setForm(nextForm);
+      setEditLoadState("loaded");
       setTimeout(() => {
         window.scrollTo({ top: 0, behavior: "smooth" });
         editorRef.current?.scrollIntoView({
@@ -504,6 +560,7 @@ export function ProductCatalog({
       setError(
         cause instanceof Error ? cause.message : "Unable to load product.",
       );
+      setEditLoadState("error");
     } finally {
       setBusy(false);
     }
@@ -608,6 +665,22 @@ export function ProductCatalog({
           : group,
       ),
     }));
+
+  if (isDedicatedEdit && editLoadState !== "loaded") {
+    return (
+      <div className="rounded-xl border border-black/10 bg-white p-5">
+        {editLoadState === "loading" ? (
+          <p role="status" className="text-sm text-black/60">
+            Loading product...
+          </p>
+        ) : (
+          <p role="alert" className="text-sm text-red-600">
+            {error || "Product not found."}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -753,8 +826,7 @@ export function ProductCatalog({
             <button
               type="button"
               onClick={() => {
-                setEditing(null);
-                setForm(empty);
+                router.push("/admin/products");
               }}
               className="rounded border px-4 py-2"
             >
@@ -763,7 +835,14 @@ export function ProductCatalog({
           )}
         </div>
       </form>
-      <div className={editId ? "hidden" : "grid gap-3 rounded-xl border border-black/10 bg-white p-4 md:grid-cols-4"}>
+      {isDedicatedEdit && error && (
+        <p role="alert" className="text-sm text-red-600">
+          {error}
+        </p>
+      )}
+      {!isDedicatedEdit && (
+        <>
+          <div className="grid gap-3 rounded-xl border border-black/10 bg-white p-4 md:grid-cols-4">
         <Input
           label="Search"
           value={filters.query}
@@ -845,6 +924,7 @@ export function ProductCatalog({
                   (entry) => entry.name === event.target.value,
                 );
                 if (view) {
+                  cancelProductRequest();
                   setPage(1);
                   setFilters(view.filters);
                 }
@@ -886,8 +966,8 @@ export function ProductCatalog({
             </button>
           ))}
         </div>
-      </div>
-      {selected.length > 0 && (
+          </div>
+          {selected.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-white p-3 text-sm">
           <b>{selected.length} selected</b>
           <select
@@ -926,13 +1006,13 @@ export function ProductCatalog({
             ),
           )}
         </div>
-      )}
-      {error && (
+          )}
+          {error && (
         <p role="alert" className="text-sm text-red-600">
           {error}
         </p>
-      )}
-      <div className={editId ? "hidden" : "overflow-x-auto rounded-xl border border-black/10 bg-white"}>
+          )}
+          <div className="overflow-x-auto rounded-xl border border-black/10 bg-white">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b">
@@ -1032,8 +1112,8 @@ export function ProductCatalog({
             No products found.
           </p>
         )}
-      </div>
-      <div className={editId ? "hidden" : "flex items-center justify-between text-sm"}>
+          </div>
+          <div className="flex items-center justify-between text-sm">
         <span>{total} products</span>
         <div className="flex items-center gap-3">
           <button
@@ -1062,7 +1142,9 @@ export function ProductCatalog({
             Next
           </button>
         </div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

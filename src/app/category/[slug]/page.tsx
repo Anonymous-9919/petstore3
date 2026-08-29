@@ -5,16 +5,15 @@ import { useParams } from "next/navigation";
 import ProductCard from "@/components/ProductCard";
 import { CategoryHeader } from "@/components/Header";
 import AreaBottomBar from "@/components/AreaBottomBar";
-import { getCategoryBySlug, getCategoryName, getProducts } from "@/data/loader";
 import { useLang } from "@/lib/state";
-import { use } from "react";
+import { useCatalog } from "@/hooks/useCatalog";
 
 export default function CategoryPage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug ?? "";
   const lang = useLang((s) => s.lang);
-  const cat = getCategoryBySlug(slug);
-  const products = use(getProducts());
+  const { categories, products } = useCatalog();
+  const cat = categories.find((category) => category.slug === slug);
   const list = useMemo(
     () => products.filter((p) => p.category_slug === slug),
     [products, slug]
@@ -22,7 +21,7 @@ export default function CategoryPage() {
 
   return (
     <>
-      <CategoryHeader title={getCategoryName(cat, lang)} />
+      <CategoryHeader title={cat ? (lang === "ar" && cat.ar_name ? cat.ar_name : cat.name) : ""} />
       <div className="h-[80px]" />
       {list.length === 0 ? (
         <p className="px-4 pb-20 text-center text-[14px] text-[#666]">

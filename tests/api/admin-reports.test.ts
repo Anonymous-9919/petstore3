@@ -50,6 +50,18 @@ describe("admin reports", () => {
     expect(mocks.orderAggregate).not.toHaveBeenCalled();
   });
 
+  it("applies valid transaction filters and rejects invalid enum values before querying", async () => {
+    const { GET } = await import("@/app/api/admin/reports/route");
+    const response = await GET(new Request("https://store.example.test/api/admin/reports?paymentMethod=CASH&status=DELIVERED&fulfillmentMode=PICKUP"));
+
+    expect(response.status).toBe(200);
+    expect(mocks.orderAggregate).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ paymentMethod: "CASH", status: "DELIVERED", fulfillmentMode: "PICKUP" }) }));
+    mocks.orderAggregate.mockClear();
+    const invalid = await GET(new Request("https://store.example.test/api/admin/reports?paymentMethod=BITCOIN"));
+    expect(invalid.status).toBe(400);
+    expect(mocks.orderAggregate).not.toHaveBeenCalled();
+  });
+
   it("exports the scoped report as CSV", async () => {
     const { GET } = await import("@/app/api/admin/reports/route");
     const response = await GET(new Request("https://store.example.test/api/admin/reports?start=2026-01-02&end=2026-01-05&format=csv"));
@@ -82,8 +94,17 @@ describe("admin reports", () => {
     const { GET } = await import("@/app/api/admin/reports/route");
     const response = await GET(new Request("https://store.example.test/api/admin/reports?table=products&page=2&pageSize=10&format=csv"));
 
-    expect(mocks.queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('FROM "OrderItem"'), expect.any(Date), expect.any(Date), 10, 10);
+    expect(mocks.queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('FROM "OrderItem"'), expect.any(Date), expect.any(Date), 11, 10);
     await expect(response.text()).resolves.toContain('"name","units","gross_line_total","orders"');
+  });
+
+  it("supports hourly sales grouping with a controlled SQL interval", async () => {
+    mocks.queryRawUnsafe.mockImplementation((query: string) => query.includes('FROM "OrderItem"') ? Promise.resolve([]) : Promise.resolve([]));
+    const { GET } = await import("@/app/api/admin/reports/route");
+    const response = await GET(new Request("https://store.example.test/api/admin/reports?table=sales&grouping=hour"));
+
+    expect(response.status).toBe(200);
+    expect(mocks.queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining("date_trunc('hour'"), expect.any(Date), expect.any(Date), 26, 0);
   });
 
   it("bounds supporting lists while keeping inventory valuation as an exact aggregate", async () => {

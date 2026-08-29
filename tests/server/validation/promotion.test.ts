@@ -30,4 +30,9 @@ describe("promotionInputSchema", () => {
     expect(promotionInputSchema.safeParse({ ...buyXGetY, type: "PERCENTAGE" }).success).toBe(false);
     expect(promotionInputSchema.safeParse({ ...buyXGetY, benefit: "QUANTITY_TIER", qualifyingProductIds: [], rewardProductIds: [], targetIds: [targetId] }).success).toBe(true);
   });
+
+  it("rejects duplicate target and restriction identifiers", () => {
+    expect(promotionInputSchema.safeParse({ name: "Bad", nameAr: "سيئ", type: "FIXED", scope: "PRODUCT", value: 1, targetIds: [targetId, targetId] }).success).toBe(false);
+    expect(promotionInputSchema.safeParse({ name: "Bad", nameAr: "سيئ", type: "FIXED", scope: "CART", value: 1, branchIds: [targetId, targetId] }).success).toBe(false);
+  });
 });

@@ -3,10 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 import { cn } from "@/lib/utils";
-import type { Map, Marker } from "leaflet";
+import type { DivIcon, Icon, Map, Marker } from "leaflet";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type LeafletLib = Record<string, any>;
+type LeafletLib = typeof import("leaflet");
 
 export default function DeliveryMap({
   lat,
@@ -27,7 +26,7 @@ export default function DeliveryMap({
 
   useEffect(() => {
     if (!lib) {
-      import("leaflet").then((mod) => setLib((mod as any).default ?? mod));
+      import("leaflet").then((mod) => setLib(mod));
     }
   }, [lib]);
 
@@ -58,14 +57,14 @@ export default function DeliveryMap({
     markers.forEach((m) => m.removeFrom(map));
     markers.length = 0;
 
-    const areaIcon: LeafletLib = lib.icon({
+    const areaIcon: Icon = lib.icon({
       iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
       shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       iconSize: [25, 41],
       iconAnchor: [12, 41],
     });
 
-    const userIcon: LeafletLib = lib.divIcon({
+    const userIcon: DivIcon = lib.divIcon({
       className: "user-location-pin",
       html:
         '<div style="width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 3px #fff,0 0 0 6px rgba(66,153,225,0.55);background:rgba(66,153,225,0.95);"></div>',
@@ -76,7 +75,7 @@ export default function DeliveryMap({
     const hasArea = typeof lat === "number" && typeof lng === "number";
     const hasUser = typeof userLat === "number" && typeof userLng === "number";
 
-    const positions: { lat: number; lng: number; icon: LeafletLib }[] = [];
+    const positions: { lat: number; lng: number; icon: Icon | DivIcon }[] = [];
     if (hasArea) positions.push({ lat, lng: lng!, icon: areaIcon });
     if (hasUser) positions.push({ lat: userLat!, lng: userLng!, icon: userIcon });
 

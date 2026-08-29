@@ -10,6 +10,7 @@ import {
   UnderlinePhoneField,
 } from "@/components/Checkout";
 import { getMsg } from "@/lib/i18n";
+import { canonicalizeKuwaitPhone } from "@/lib/phone";
 import { useCart, useDelivery, useLang } from "@/lib/state";
 
 export default function CheckoutDetailsPage() {
@@ -22,14 +23,9 @@ export default function CheckoutDetailsPage() {
   const storedPhone = useDelivery((s) => s.phone);
   const setContact = useDelivery((s) => s.setContact);
 
-  const normalizePhone = (s: string) => {
-    const digits = s.replace(/\D/g, "").replace(/^965/, "");
-    return `+965${digits}`;
-  };
-
   const [name, setName] = useState(storedName);
   const [phone, setPhone] = useState(() =>
-    storedPhone ? normalizePhone(storedPhone) : "+965"
+    storedPhone ? canonicalizeKuwaitPhone(storedPhone) ?? storedPhone : "+965"
   );
   const [err, setErr] = useState("");
 
@@ -52,15 +48,15 @@ export default function CheckoutDetailsPage() {
   }
 
   const next = () => {
-    const phoneDigits = phone.replace(/\D/g, "").replace(/^965/, "");
-    if (!name.trim() || phoneDigits.length < 8) {
+    const canonicalPhone = canonicalizeKuwaitPhone(phone);
+    if (!name.trim() || !canonicalPhone) {
       setErr(
         ar ? "يرجى تعبئة الاسم ورقم الهاتف" : "Please fill in your name and phone number"
       );
       return;
     }
     setErr("");
-    setContact(name.trim(), phone);
+    setContact(name.trim(), canonicalPhone);
     router.push("/checkout/address");
   };
 

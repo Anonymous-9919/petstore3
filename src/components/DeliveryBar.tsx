@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getMsg } from "@/lib/i18n";
 import { useDelivery, useLang } from "@/lib/state";
-import { cn, deliveryRange, pickupRange, slotText, tomorrowKey } from "@/lib/utils";
+import { cn, slotText, tomorrowKey } from "@/lib/utils";
 import { LocalShippingIcon, ScheduleIcon } from "@/components/MuiIcons";
 import DeliveryTimeDrawer from "@/components/DeliveryTimeDrawer";
 
@@ -26,13 +26,24 @@ export default function DeliveryBar() {
   const expectedDate = useDelivery((s) => s.expectedDate);
   const expectedStart = useDelivery((s) => s.expectedStart);
   const expectedEnd = useDelivery((s) => s.expectedEnd);
+  const setDeliveryTime = useDelivery((s) => s.setDeliveryTime);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const area = ar ? areaArName || areaName : areaName;
   const branch = ar ? branchArName || branchName : branchName;
   const hasValue = mode === "delivery" ? !!areaId : !!branchId;
-  const range = mode === "delivery" ? deliveryRange(lang) : pickupRange(lang);
+  useEffect(() => {
+    if (!branchId || (expectedDate && expectedStart && expectedEnd)) return;
+    fetch(`/api/storefront/fulfillment?branchId=${branchId}&mode=${mode}`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => {
+        const day = data.days.find((candidate: { active: boolean }) => candidate.active);
+        const slot = day?.slots.find((candidate: { active: boolean }) => candidate.active);
+        if (day && slot) setDeliveryTime({ type: "scheduled", date: day.key, start: slot.start, end: slot.end });
+      })
+      .catch(() => undefined);
+  }, [branchId, mode, expectedDate, expectedStart, expectedEnd, setDeliveryTime]);
 
   const onPickMode = (m: "delivery" | "pickup") => {
     setMode(m);
@@ -95,9 +106,7 @@ export default function DeliveryBar() {
     ? ""
     : scheduled && expectedStart && expectedEnd
       ? slotText(expectedDate as string, expectedStart, expectedEnd, lang)
-      : ar
-        ? `${range.label}، ${range.from} الى ${range.to}`
-        : `${range.label}, ${range.from} to ${range.to}`;
+      : "";
   const row2Red = scheduled && !!expectedDate && expectedDate > tomorrowKey();
   const openTime = () => hasValue && setDrawerOpen(true);
 

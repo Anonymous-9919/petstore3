@@ -59,13 +59,31 @@ export async function GET(request: Request) {
       return level ? [level] : [];
     });
     const total = countRows[0]?.total ?? 0;
-    return NextResponse.json({ inventoryLevels, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+    return NextResponse.json({ inventoryLevels: await addIncomingQuantities(inventoryLevels, branchId), pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
   }
   const [inventoryLevels, total] = await Promise.all([
     db.inventoryLevel.findMany({ where, orderBy: [{ product: { name: "asc" } }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize, select }),
     db.inventoryLevel.count({ where }),
   ]);
-  return NextResponse.json({ inventoryLevels, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+  return NextResponse.json({ inventoryLevels: await addIncomingQuantities(inventoryLevels, branchId), pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+}
+
+async function addIncomingQuantities<T extends { branch: { id: string }; product: { id: string }; variant: { id: string } | null }>(inventoryLevels: T[], branchId?: string) {
+  if (!inventoryLevels.length) return inventoryLevels.map((level) => ({ ...level, incomingQuantity: 0 }));
+  const transfers = await db.inventoryTransfer.findMany({
+    where: { status: "IN_TRANSIT", ...(branchId ? { destinationBranchId: branchId } : {}) },
+    select: { destinationBranchId: true, lines: { select: { productId: true, variantId: true, quantity: true } } },
+  });
+  const incomingByLevel = new Map<string, number>();
+  for (const transfer of transfers) {
+    for (const line of transfer.lines) {
+      if (line.variantId) {
+        const key = `${transfer.destinationBranchId}:${line.productId}:${line.variantId}`;
+        incomingByLevel.set(key, (incomingByLevel.get(key) ?? 0) + line.quantity);
+      }
+    }
+  }
+  return inventoryLevels.map((level) => ({ ...level, incomingQuantity: level.variant ? incomingByLevel.get(`${level.branch.id}:${level.product.id}:${level.variant.id}`) ?? 0 : 0 }));
 }
 
 export async function POST(request: Request) {
@@ -77,7 +95,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid inventory adjustment." }, { status: 400 });
 
   const { inventoryLevelId, quantity, note, reason } = parsed.data;
-  const adjustmentReason = reason ?? note;
+  const adjustmentReason = reason;
   const result = await db.$transaction(async (tx) => {
     const level = await tx.inventoryLevel.findUnique({
       where: { id: inventoryLevelId },
@@ -101,7 +119,7 @@ export async function POST(request: Request) {
       branchId: level.branchId, productId: level.productId, variantId: level.variantId, type: "ADJUSTMENT", quantity,
       beforeQuantity, afterQuantity: after.quantity, reason: "MANUAL_ADJUSTMENT", reasonValue: adjustmentReason,
       referenceType: "inventoryLevel", referenceId: level.id, correlationId: level.id,
-      note: reason ? `${reason}: ${note}` : note, actorId: user.id,
+      note: `${reason}: ${note}`, actorId: user.id,
     });
     await tx.auditLog.create({
       data: {

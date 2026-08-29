@@ -1,21 +1,21 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search as SearchIcon, X } from "lucide-react";
 import ProductCard from "@/components/ProductCard";
 import { SubHeader } from "@/components/Header";
 import { BackArrowIcon } from "@/components/MuiIcons";
 import { getMsg } from "@/lib/i18n";
 import { useLang } from "@/lib/state";
-import { getProducts } from "@/data/loader";
 import { cn } from "@/lib/utils";
+import { useCatalog } from "@/hooks/useCatalog";
 
 export default function SearchPage() {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
   const t = getMsg;
   const [q, setQ] = useState("");
-  const products = use(getProducts());
+  const { products } = useCatalog();
 
   const results = useMemo(() => {
     const query = q.trim().toLowerCase();

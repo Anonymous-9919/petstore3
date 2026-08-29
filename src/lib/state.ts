@@ -14,6 +14,7 @@ export function useHasMounted(): boolean {
 export interface CartItem {
   key: string;
   productId: number;
+  variantId?: number;
   slug: string;
   categorySlug: string;
   name: string;
@@ -43,6 +44,7 @@ interface CartState {
 
 interface WishlistState {
   ids: number[];
+  setIds: (ids: number[]) => void;
   toggle: (id: number) => void;
   has: (id: number) => boolean;
 }
@@ -157,6 +159,7 @@ export const useWishlist = create<WishlistState>()(
   persist(
     (set, get) => ({
       ids: [],
+      setIds: (ids) => set({ ids }),
       toggle: (id) =>
         set((state) => ({
           ids: state.ids.includes(id)

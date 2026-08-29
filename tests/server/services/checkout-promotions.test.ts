@@ -38,4 +38,9 @@ describe("calculatePromotionDiscount", () => {
     const result = calculatePromotionDiscount({ type: "FIXED", benefit: "BUY_X_GET_Y", scope: "PRODUCT", value: decimal(1), minimumQuantity: 2, rewardQuantity: 1, qualifyingProductIds: ["product-a"], rewardProductIds: ["product-a"], targets: [] }, [{ ...lines[0], quantity: 3 }]);
     expect(result.discount.toFixed(3)).toBe("3.333");
   });
+
+  it("counts non-overlapping qualifying products when the reward also qualifies", () => {
+    const result = calculatePromotionDiscount({ type: "FIXED", benefit: "BUY_X_GET_Y", scope: "PRODUCT", value: decimal(1), minimumQuantity: 2, rewardQuantity: 1, qualifyingProductIds: ["product-a", "product-b"], rewardProductIds: ["product-b"], targets: [] }, [{ ...lines[0], quantity: 2 }, { ...lines[1], quantity: 1 }]);
+    expect(result.discount.toString()).toBe("5");
+  });
 });

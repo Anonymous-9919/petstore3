@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   queryRawUnsafe: vi.fn(),
   movementFindMany: vi.fn(),
   auditFindMany: vi.fn(),
+  transferFindMany: vi.fn(),
   transaction: vi.fn(),
 }));
 
@@ -17,6 +18,7 @@ vi.mock("@/server/db", () => ({
     inventoryLevel: { findMany: mocks.inventoryFindMany, count: mocks.inventoryCount, findUnique: mocks.inventoryFindUnique, fields: { reserved: "reserved" } },
     inventoryMovement: { findMany: mocks.movementFindMany },
     auditLog: { findMany: mocks.auditFindMany },
+    inventoryTransfer: { findMany: mocks.transferFindMany },
     $transaction: mocks.transaction,
     $queryRawUnsafe: mocks.queryRawUnsafe,
   },
@@ -31,7 +33,7 @@ describe("admin inventory API", () => {
     mocks.inventoryCount.mockReset(); mocks.inventoryCount.mockResolvedValue(51);
     mocks.inventoryFindUnique.mockReset();
     mocks.queryRawUnsafe.mockReset(); mocks.queryRawUnsafe.mockResolvedValueOnce([{ id: "level-1" }]).mockResolvedValueOnce([{ total: 51 }]);
-    mocks.movementFindMany.mockReset(); mocks.auditFindMany.mockReset();
+    mocks.movementFindMany.mockReset(); mocks.auditFindMany.mockReset(); mocks.transferFindMany.mockReset(); mocks.transferFindMany.mockResolvedValue([]);
     mocks.transaction.mockReset();
   });
 
@@ -54,6 +56,17 @@ describe("admin inventory API", () => {
 
     await GET(new Request("https://store.example.test/api/admin/inventory?stock=out-of-stock"));
     expect(mocks.inventoryFindMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { quantity: { lte: "reserved" } } }));
+  });
+
+  it("includes stock currently in transit to each variant level", async () => {
+    mocks.inventoryFindMany.mockResolvedValue([{ id: "level-1", branch: { id: "de8ee636-f2e3-43db-a34a-7d6536bd50bb" }, product: { id: "970ee4b1-41c9-4eb3-b6fb-cb5a16ce81d9" }, variant: { id: "b5cf0a0c-fdb0-4271-bc65-72f8ab196b9f" } }]);
+    mocks.inventoryCount.mockResolvedValue(1);
+    mocks.transferFindMany.mockResolvedValue([{ destinationBranchId: "de8ee636-f2e3-43db-a34a-7d6536bd50bb", lines: [{ productId: "970ee4b1-41c9-4eb3-b6fb-cb5a16ce81d9", variantId: "b5cf0a0c-fdb0-4271-bc65-72f8ab196b9f", quantity: 4 }] }]);
+    const { GET } = await import("@/app/api/admin/inventory/route");
+    const response = await GET(new Request("https://store.example.test/api/admin/inventory?branchId=de8ee636-f2e3-43db-a34a-7d6536bd50bb"));
+
+    await expect(response.json()).resolves.toMatchObject({ inventoryLevels: [{ id: "level-1", incomingQuantity: 4 }] });
+    expect(mocks.transferFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { status: "IN_TRANSIT", destinationBranchId: "de8ee636-f2e3-43db-a34a-7d6536bd50bb" } }));
   });
 
   it("returns movements and audit snapshots for a specific inventory level", async () => {
@@ -90,6 +103,14 @@ describe("admin inventory API", () => {
     expect(response.status).toBe(200);
     expect(tx.inventoryMovement.create).toHaveBeenCalledWith({ data: expect.objectContaining({ variantId: "b5cf0a0c-fdb0-4271-bc65-72f8ab196b9f", type: "ADJUSTMENT", quantity: 2, beforeQuantity: 10, afterQuantity: 12, reason: "MANUAL_ADJUSTMENT", referenceType: "inventoryLevel", note: "Receiving: Supplier delivery" }) });
     expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ before: { quantity: 10, reserved: 3 }, after: { quantity: 12, reserved: 3, change: 2, movementId: "movement-id", reason: "Receiving", note: "Supplier delivery" } }) }));
+  });
+
+  it("rejects an unsupported adjustment reason before opening a transaction", async () => {
+    const { POST } = await import("@/app/api/admin/inventory/route");
+    const response = await POST(new Request("https://store.example.test/api/admin/inventory", { method: "POST", body: JSON.stringify({ inventoryLevelId: "4543449c-5211-476e-9463-cb597653657f", quantity: 1, reason: "Unexpected", note: "Bad input" }) }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it("paginates cross-catalog stock movements with filters and keeps variant identity", async () => {

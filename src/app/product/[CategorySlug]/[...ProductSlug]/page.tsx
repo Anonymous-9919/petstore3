@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { CategoryHeader } from "@/components/Header";
 import { AddIcon, MinusIcon, ShareIcon } from "@/components/MuiIcons";
-import { getProducts } from "@/data/loader";
 import { getMsg } from "@/lib/i18n";
 import {
   deliveryAddressComplete,
@@ -14,8 +13,8 @@ import {
   useLang,
   useLocationSet,
 } from "@/lib/state";
-import { cn, fmtPrice, sanitizeHtml } from "@/lib/utils";
-import { use } from "react";
+import { cn, fmtPrice, stripHtml } from "@/lib/utils";
+import { useCatalog } from "@/hooks/useCatalog";
 
 export default function ProductPage() {
   const params = useParams<{ CategorySlug: string; ProductSlug: string[] }>();
@@ -26,7 +25,7 @@ export default function ProductPage() {
   const rawSlug = slugs[slugs.length - 1] ?? "";
   const slug = safeDecode(rawSlug);
 
-  const all = use(getProducts());
+  const { products: all } = useCatalog();
   const prod = all.find((p) => p.slug === slug);
 
   const t = getMsg;
@@ -176,10 +175,9 @@ export default function ProductPage() {
           {ar ? "الوصف" : "Description"}
         </p>
         <div className="mt-1 border border-[#dee2e6] bg-white">
-          <div
-            className={cn("product-description mx-[14px] my-[14px] text-[14px] leading-5 text-ink", ar ? "text-right" : "text-left")}
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(desc) }}
-          />
+          <div className={cn("product-description mx-[14px] my-[14px] whitespace-pre-line text-[14px] leading-5 text-ink", ar ? "text-right" : "text-left")}>
+            {stripHtml(desc)}
+          </div>
         </div>
 
         <div className="mt-[20.5px] border border-[#dee2e6] bg-white pt-[15px]">
@@ -291,6 +289,7 @@ export default function ProductPage() {
                 </button>
                 <button
                   type="button"
+                  aria-label="Add to cart"
                   onClick={() => handleAdd(false)}
                   className="flex h-[45px] w-[calc((100%-4px)/2)] items-center justify-center rounded-[4px] bg-brand text-[12.25px] font-medium leading-[21.44px] text-black/[0.87]"
                 >
@@ -301,6 +300,7 @@ export default function ProductPage() {
               <>
                 <button
                   type="button"
+                  aria-label="Add to cart"
                   onClick={() => handleAdd(false)}
                   className="flex h-[45px] w-[calc((100%-4px)/2)] items-center justify-center rounded-[4px] bg-brand text-[12.25px] font-medium leading-[21.44px] text-black/[0.87]"
                 >

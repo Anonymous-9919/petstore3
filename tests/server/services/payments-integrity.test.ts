@@ -14,6 +14,7 @@ vi.mock("@/server/db", () => ({ db: dbMock }));
 import {
   expireOnlineReservationOrder,
   settleKnetPayment,
+  requestOrderRefund,
   transitionCashOrder,
   type KnetSettlementInput,
 } from "@/server/services/payments";
@@ -419,5 +420,34 @@ describe("payment and reservation integrity", () => {
     expect(online.inventory).toEqual({ quantity: 5, reserved: 0 });
     expect(online.movements).toHaveLength(1);
     expect(online.events).toHaveLength(1);
+  });
+
+  it("records a settled delivery refund request without claiming that the payment was refunded", async () => {
+    const state = cashState();
+    state.order.status = OrderStatus.DELIVERED;
+    state.order.paymentStatus = PaymentStatus.CASH_COLLECTED;
+    state.payments[0].status = PaymentStatus.CASH_COLLECTED;
+    useState(state);
+
+    const results = await Promise.all([
+      requestOrderRefund({ orderId: state.order.id, actorId: "staff-1", reason: "Damaged delivery" }),
+      requestOrderRefund({ orderId: state.order.id, actorId: "staff-1", reason: "Damaged delivery" }),
+    ]);
+
+    expect(results.map((result) => result.changed).sort()).toEqual([false, true]);
+    expect(state.order.status).toBe(OrderStatus.REFUND_REQUESTED);
+    expect(state.order.paymentStatus).toBe(PaymentStatus.CASH_COLLECTED);
+    expect(state.payments[0].status).toBe(PaymentStatus.CASH_COLLECTED);
+    expect(state.histories).toEqual([expect.objectContaining({ fromStatus: OrderStatus.DELIVERED, toStatus: OrderStatus.REFUND_REQUESTED, note: "Damaged delivery" })]);
+    expect(state.audits).toEqual([expect.objectContaining({ action: "order.refund.requested" })]);
+  });
+
+  it("does not allow a refund request before delivery and settlement", async () => {
+    const state = cashState();
+    useState(state);
+
+    await expect(requestOrderRefund({ orderId: state.order.id, actorId: "staff-1", reason: "Customer request" })).rejects.toMatchObject({ code: "CONTRADICTORY_OUTCOME" });
+    expect(state.order.status).toBe(OrderStatus.NEW);
+    expect(state.payments[0].status).toBe(PaymentStatus.CASH_DUE);
   });
 });

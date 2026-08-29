@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { authorizeAdminApi } from "@/server/auth";
 import { db } from "@/server/db";
 import { importModes, previewImport, MAX_IMPORT_BYTES, type ImportMode } from "@/server/services/product-import";
-import { importZipImages, MAX_ZIP_BYTES } from "@/server/services/product-import-media";
+import { importZipImages, MAX_ZIP_BYTES, removeImportedImages } from "@/server/services/product-import-media";
 
 async function requestPayload(request: Request) {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
@@ -46,13 +46,28 @@ export async function POST(request: Request) {
     ]);
     let preview = previewImport({ csv, mapping, mode, categories, branches, products, variants });
     let imagePathsByRow: Record<number, string[]> | undefined;
+    let uploadedAssets: Array<{ path: string; name: string; contentType: string; size: number }> = [];
+    let unmatchedImages: string[] = [];
     if (zip && !preview.errors.length) {
-      imagePathsByRow = await importZipImages(zip, preview.rows.map((row) => ({ row: row.row, handle: String(row.product.slug), productSku: typeof row.product.sku === "string" ? row.product.sku : null, variantSku: typeof row.variant.sku === "string" ? row.variant.sku : null })));
+      const imported = await importZipImages(zip, preview.rows.map((row) => ({ row: row.row, handle: String(row.product.slug), productSku: typeof row.product.sku === "string" ? row.product.sku : null, variantSku: typeof row.variant.sku === "string" ? row.variant.sku : null })));
+      imagePathsByRow = imported.pathsByRow;
+      uploadedAssets = imported.assets;
+      unmatchedImages = imported.unmatched;
       preview = previewImport({ csv, mapping, mode, categories, branches, products, variants, imagePathsByRow });
     }
-    const imageSummary = zip ? { matchedImages: Object.values(imagePathsByRow ?? {}).reduce((total, paths) => total + paths.length, 0), missingImages: preview.rows.filter((row) => !row.imagePaths.length).length } : {};
-    const job = await db.productImportJob.create({ data: { actorId: authorization.user.id, sourceCsv: csv, mapping: { columns: preview.mapping, mode, imagePathsByRow }, summary: { ...preview.summary, ...imageSummary }, errors: preview.errors } });
-    await db.auditLog.create({ data: { actorId: authorization.user.id, action: "catalog.import_previewed", entityType: "productImportJob", entityId: job.id, after: preview.summary } });
+    const imageSummary = zip ? { matchedImages: Object.values(imagePathsByRow ?? {}).reduce((total, paths) => total + paths.length, 0), unmatchedImages, missingImages: preview.rows.filter((row) => !row.imagePaths.length).length } : {};
+    let job;
+    try {
+      job = await db.$transaction(async (tx) => {
+        if (uploadedAssets.length) await tx.mediaAsset.createMany({ data: uploadedAssets.map((asset) => ({ ...asset, uploadedById: authorization.user.id })), skipDuplicates: true });
+        const created = await tx.productImportJob.create({ data: { actorId: authorization.user.id, sourceCsv: csv, mapping: { columns: preview.mapping, mode, imagePathsByRow }, summary: { ...preview.summary, ...imageSummary }, errors: preview.errors } });
+        await tx.auditLog.create({ data: { actorId: authorization.user.id, action: "catalog.import_previewed", entityType: "productImportJob", entityId: created.id, after: preview.summary } });
+        return created;
+      });
+    } catch (error) {
+      await removeImportedImages(uploadedAssets.map((asset) => asset.path));
+      throw error;
+    }
     return NextResponse.json({ job: { id: job.id, status: job.status, ...preview }, }, { status: 201 });
   } catch (error) {
     console.error("Unable to preview product import CSV.", error);

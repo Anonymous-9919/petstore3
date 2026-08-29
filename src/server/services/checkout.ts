@@ -7,6 +7,7 @@ import type { CheckoutRequest } from "@/server/validation/checkout";
 import { db } from "@/server/db";
 import { isValidFulfillmentSlot } from "@/server/services/fulfillment";
 import { notifyOrderCreated } from "@/server/notifications/email";
+import { notifyStaff } from "@/server/notifications/staff";
 import { calculatePromotionDiscount, type PromotionLine } from "@/server/services/promotion-calculation";
 import { writeInventoryMovement } from "@/server/services/inventory-ledger";
 
@@ -70,13 +71,9 @@ export async function resolveCheckoutCustomer(client: CheckoutCustomerClient, co
   if (matches.length > 1) return null;
   const existing = matches[0];
   if (existing?.userId) return null;
-  if (existing) {
-    return client.customer.update({
-      where: { id: existing.id },
-      data: { name: contact.name, email: contact.email },
-      select: checkoutCustomerSelect,
-    });
-  }
+  // A phone number alone is not proof of ownership. Order contact details are
+  // snapshotted separately, so prior guest profile data remains untouched.
+  if (existing) return existing;
   return client.customer.create({
     data: { name: contact.name, phone: contact.phone, email: contact.email },
     select: checkoutCustomerSelect,
@@ -110,7 +107,11 @@ async function evaluateCandidate(client: PromotionClient, promotion: PromotionFo
   if (customerId && promotion.perCustomerLimit != null && await client.promotionRedemption.count({ where: { promotionId: promotion.id, customerId, order: consumingOrder } }) >= promotion.perCustomerLimit) {
     throw new CheckoutError("You have reached the usage limit for this promotion.");
   }
-  if (promotion.firstOrderOnly && customerId && await client.order.count({ where: { customerId, status: consumingOrder.status } }) > 0) throw new CheckoutError("This promotion is for a first order only.");
+  if (promotion.firstOrderOnly && customerId) {
+    // Serialize first-order checks across every promotion code for this customer.
+    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`customer:first-order:${customerId}`}))`;
+    if (await client.order.count({ where: { customerId, status: consumingOrder.status } }) > 0) throw new CheckoutError("This promotion is for a first order only.");
+  }
   let discount: Prisma.Decimal;
   try {
     ({ discount } = calculatePromotionDiscount(promotion, lines));
@@ -180,6 +181,7 @@ export async function quoteCheckout(input: CheckoutRequest, authenticatedCustome
   if (input.mode === "delivery" && !coverage) throw new CheckoutError("This branch does not serve the selected area.");
   if (!(await isValidFulfillmentSlot(selectedBranch.legacyId ?? selectedBranch.publicId, input.mode, input.scheduledStartAt, input.scheduledEndAt))) throw new CheckoutError("The selected fulfillment time is no longer available.");
 
+  const quantities = new Map<string, number>();
   const lines = input.items.map((item) => {
     const product = products.find((candidate) => candidate.publicId === item.productId || candidate.legacyId === item.productId)!;
     const variant = item.variantId
@@ -188,26 +190,30 @@ export async function quoteCheckout(input: CheckoutRequest, authenticatedCustome
     if (!variant) throw new CheckoutError(`The selected variant is no longer available for ${product.name}.`);
     if (input.mode === "delivery" && !product.isDeliveryEnabled) throw new CheckoutError(`${product.name} is not available for delivery.`);
     if (input.mode === "pickup" && !product.isPickupEnabled) throw new CheckoutError(`${product.name} is not available for pickup.`);
-    if (item.quantity < product.minQuantity || (product.maxQuantity && item.quantity > product.maxQuantity)) {
-      throw new CheckoutError(`Quantity is not allowed for ${product.name}.`);
-    }
-    if (item.quantity % product.quantityIncrement !== 0) throw new CheckoutError(`Quantity increment is invalid for ${product.name}.`);
+    const quantityKey = `${product.id}:${variant.id}`;
+    quantities.set(quantityKey, (quantities.get(quantityKey) ?? 0) + item.quantity);
 
+    if (new Set(item.optionValueIds).size !== item.optionValueIds.length) throw new CheckoutError(`Duplicate options are not allowed for ${product.name}.`);
     const options = item.optionValueIds.map((legacyId) => {
       const group = product.optionGroups.find((candidate) => candidate.values.some((value) => value.legacyId === legacyId));
       const value = group?.values.find((candidate) => candidate.legacyId === legacyId);
       if (!group || !value) throw new CheckoutError(`An option is no longer available for ${product.name}.`);
       return { group, value };
     });
-    for (const group of product.optionGroups.filter((candidate) => candidate.isRequired)) {
+    for (const group of product.optionGroups) {
       const count = options.filter((option) => option.group.id === group.id).length;
-      if (count < Math.max(1, group.minSelections) || (group.maxSelections && count > group.maxSelections)) {
-        throw new CheckoutError(`Select the required options for ${product.name}.`);
-      }
+      const minimum = group.isRequired ? Math.max(1, group.minSelections) : 0;
+      const maximum = group.allowsMultiple ? group.maxSelections : 1;
+      if (count < minimum || (maximum != null && count > maximum)) throw new CheckoutError(`Select valid options for ${product.name}.`);
     }
     const unitPrice = options.reduce((price, option) => price.plus(option.value.priceDelta), decimal(variant.price));
     return { item, product, variant, options, unitPrice, quantity: item.quantity, lineTotal: unitPrice.mul(item.quantity) };
   });
+
+  for (const line of lines) {
+    const quantity = quantities.get(`${line.product.id}:${line.variant.id}`)!;
+    if (quantity < line.product.minQuantity || (line.product.maxQuantity && quantity > line.product.maxQuantity) || quantity % line.product.quantityIncrement !== 0) throw new CheckoutError(`Quantity is not allowed for ${line.product.name}.`);
+  }
 
   const subtotal = lines.reduce((total, line) => total.plus(line.lineTotal), decimal(0));
   if (coverage && subtotal.lessThan(coverage.minimumOrderValue)) throw new CheckoutError("The minimum order value for this area has not been reached.");
@@ -340,5 +346,6 @@ export async function createOrder(input: CheckoutRequest, authenticatedCustomerI
     return created;
   });
   notifyOrderCreated({ ...created, email: created.customer?.email ?? input.contact.email });
+  void notifyStaff({ title: "New order received", body: `Order ${created.orderNumber} is awaiting fulfillment.`, href: "/admin/orders", roles: ["OWNER", "MANAGER", "ORDER_STAFF"] });
   return created;
 }

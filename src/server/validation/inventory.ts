@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const positiveInteger = z.coerce.number().int().min(1);
+export const inventoryAdjustmentReasons = ["Count correction", "Damage", "Receiving", "Return", "Other", "Expired", "Lost"] as const;
 
 export const inventoryListQuerySchema = z.object({
   page: positiveInteger.max(10_000).default(1),
@@ -15,7 +16,7 @@ export const inventoryListQuerySchema = z.object({
 export const inventoryAdjustmentSchema = z.object({
   inventoryLevelId: z.string().uuid(),
   quantity: z.number().int().min(-1_000_000).max(1_000_000).refine((value) => value !== 0, "Adjustment cannot be zero."),
-  reason: z.string().trim().min(1, "A reason is required.").max(120).optional(),
+  reason: z.enum(inventoryAdjustmentReasons, { message: "Select a valid inventory adjustment reason." }),
   note: z.string().trim().min(1, "A note is required.").max(500),
 });
 

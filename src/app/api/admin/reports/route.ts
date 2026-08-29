@@ -1,9 +1,9 @@
-import { Prisma } from "@prisma/client";
+import { OrderStatus, Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { authorizeAdminApi } from "@/server/auth";
 import { db } from "@/server/db";
 
-type ReportFilters = { start: Date; end: Date; branchId?: string; categoryId?: string; productId?: string };
+type ReportFilters = { start: Date; end: Date; branchId?: string; categoryId?: string; productId?: string; paymentMethod?: "CASH" | "KNET" | "CARD" | "APPLE_PAY"; status?: OrderStatus; fulfillmentMode?: "DELIVERY" | "PICKUP" };
 type ReportTable = "sales" | "products" | "categories" | "branches" | "customers" | "orders" | "promotions" | "inventory";
 const reportTables: ReportTable[] = ["sales", "products", "categories", "branches", "customers", "orders", "promotions", "inventory"];
 const DELIVERY_DURATION_LIMIT = 1_000;
@@ -32,7 +32,15 @@ function parseFilters(request: Request): ReportFilters | null {
   const end = parsedEnd ?? new Date(today.getTime() + 86_400_000);
   if (!start || !end || start >= end || end.getTime() - start.getTime() > 366 * 86_400_000) return null;
   const value = (name: string) => params.get(name)?.trim() || undefined;
-  return { start, end, branchId: value("branchId"), categoryId: value("categoryId"), productId: value("productId") };
+  const paymentMethod = value("paymentMethod");
+  const status = value("status");
+  const fulfillmentMode = value("fulfillmentMode");
+  if (
+    (paymentMethod && !["CASH", "KNET", "CARD", "APPLE_PAY"].includes(paymentMethod)) ||
+    (status && !Object.values(OrderStatus).includes(status as OrderStatus)) ||
+    (fulfillmentMode && !["DELIVERY", "PICKUP"].includes(fulfillmentMode))
+  ) return null;
+  return { start, end, branchId: value("branchId"), categoryId: value("categoryId"), productId: value("productId"), paymentMethod: paymentMethod as ReportFilters["paymentMethod"], status: status as OrderStatus | undefined, fulfillmentMode: fulfillmentMode as ReportFilters["fulfillmentMode"] };
 }
 
 function csvCell(value: string | number) {
@@ -50,12 +58,12 @@ function buildOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput {
 }
 
 function buildBaseOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput {
-  return { createdAt: { gte: filters.start, lt: filters.end }, ...(filters.branchId ? { branchId: filters.branchId } : {}) };
+  return { createdAt: { gte: filters.start, lt: filters.end }, ...(filters.branchId ? { branchId: filters.branchId } : {}), ...(filters.paymentMethod ? { paymentMethod: filters.paymentMethod } : {}), ...(filters.status ? { status: filters.status } : {}), ...(filters.fulfillmentMode ? { fulfillmentMode: filters.fulfillmentMode } : {}) };
 }
 
 function buildRecognizedOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput {
   const itemFilter = buildItemFilter(filters);
-  return { deliveredAt: { gte: filters.start, lt: filters.end }, status: "DELIVERED", ...(filters.branchId ? { branchId: filters.branchId } : {}), ...(filters.productId || filters.categoryId ? { items: { some: itemFilter } } : {}) };
+  return { deliveredAt: { gte: filters.start, lt: filters.end }, status: filters.status ?? "DELIVERED", ...(filters.branchId ? { branchId: filters.branchId } : {}), ...(filters.paymentMethod ? { paymentMethod: filters.paymentMethod } : {}), ...(filters.fulfillmentMode ? { fulfillmentMode: filters.fulfillmentMode } : {}), ...(filters.productId || filters.categoryId ? { items: { some: itemFilter } } : {}) };
 }
 
 function buildItemFilter(filters: ReportFilters): Prisma.OrderItemWhereInput {
@@ -70,7 +78,7 @@ async function summary(filters: ReportFilters) {
   const where = buildOrderWhere(filters);
   const itemWhere: Prisma.OrderItemWhereInput = { ...buildItemFilter(filters), order: buildBaseOrderWhere(filters) };
   const recognizedWhere = buildRecognizedOrderWhere(filters);
-  const recognizedItemWhere: Prisma.OrderItemWhereInput = { ...buildItemFilter(filters), order: { deliveredAt: { gte: filters.start, lt: filters.end }, status: "DELIVERED", ...(filters.branchId ? { branchId: filters.branchId } : {}) } };
+  const recognizedItemWhere: Prisma.OrderItemWhereInput = { ...buildItemFilter(filters), order: { deliveredAt: { gte: filters.start, lt: filters.end }, status: filters.status ?? "DELIVERED", ...(filters.branchId ? { branchId: filters.branchId } : {}), ...(filters.paymentMethod ? { paymentMethod: filters.paymentMethod } : {}), ...(filters.fulfillmentMode ? { fulfillmentMode: filters.fulfillmentMode } : {}) } };
   const hasItemScope = Boolean(filters.productId || filters.categoryId);
   const [orders, units, recognizedOrders, recognizedUnits] = await Promise.all([
     db.order.aggregate({ where, _count: true, _sum: { total: true, subtotal: true, discountTotal: true, deliveryFee: true } }),
@@ -134,7 +142,7 @@ function tableRequest(request: Request) {
   const rawPageSize = Number(params.get("pageSize") ?? 25);
   const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 10_000) : 1;
   const pageSize = Number.isSafeInteger(rawPageSize) && rawPageSize > 0 ? Math.min(rawPageSize, 100) : 25;
-  const grouping = params.get("grouping") === "month" ? "month" : params.get("grouping") === "week" ? "week" : "day";
+  const grouping = params.get("grouping") === "hour" ? "hour" : params.get("grouping") === "month" ? "month" : params.get("grouping") === "week" ? "week" : "day";
   return { table: table as ReportTable, page, pageSize, grouping };
 }
 
@@ -142,27 +150,28 @@ async function tableReport(filters: ReportFilters, table: ReturnType<typeof tabl
   if (!table) return null;
   const values: unknown[] = [filters.start, filters.end];
   const condition = (sql: string, value?: string) => value ? (values.push(value), ` AND ${sql.replace("?", `$${values.length}`)}`) : "";
-  const scope = `o."createdAt" >= $1 AND o."createdAt" < $2${condition('o."branchId" = ?', filters.branchId)}`;
+  const scope = () => `o."createdAt" >= $1 AND o."createdAt" < $2${condition('o."branchId" = ?', filters.branchId)}${condition('o."paymentMethod" = ?::"PaymentMethod"', filters.paymentMethod)}${condition('o.status = ?::"OrderStatus"', filters.status)}${condition('o."fulfillmentMode" = ?::"FulfillmentMode"', filters.fulfillmentMode)}`;
+  const recognizedScope = () => `o."deliveredAt" >= $1 AND o."deliveredAt" < $2${condition('o."branchId" = ?', filters.branchId)}${condition('o."paymentMethod" = ?::"PaymentMethod"', filters.paymentMethod)}${condition('o."fulfillmentMode" = ?::"FulfillmentMode"', filters.fulfillmentMode)}${filters.status ? condition('o.status = ?::"OrderStatus"', filters.status) : " AND o.status = 'DELIVERED'"}`;
   // Item dimensions constrain every line-level total, never merely the parent order.
   const itemScope = (alias: string) => `${condition(`${alias}."productId" = ?`, filters.productId)}${condition(`${alias}."categoryIdSnapshot" = ?`, filters.categoryId)}`;
-  const limitOffset = () => { values.push(table.pageSize, (table.page - 1) * table.pageSize); return ` LIMIT $${values.length - 1} OFFSET $${values.length}`; };
+  const limitOffset = () => { values.push(table.pageSize + 1, (table.page - 1) * table.pageSize); return ` LIMIT $${values.length - 1} OFFSET $${values.length}`; };
   const query = table.table === "sales"
-    ? `SELECT date_trunc('${table.grouping}', o."deliveredAt") AS period, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS recognized_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE o."deliveredAt" >= $1 AND o."deliveredAt" < $2${condition('o."branchId" = ?', filters.branchId)} AND o.status = 'DELIVERED'${itemScope("i")} GROUP BY 1 ORDER BY 1 DESC${limitOffset()}`
+    ? `SELECT date_trunc('${table.grouping}', o."deliveredAt") AS period, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS recognized_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE ${recognizedScope()}${itemScope("i")} GROUP BY 1 ORDER BY 1 DESC${limitOffset()}`
     : table.table === "products"
-      ? `SELECT COALESCE(i."productName", 'Removed product') AS name, i.sku, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total, COUNT(DISTINCT o.id)::int AS orders FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE ${scope}${itemScope("i")} GROUP BY i."productName", i.sku ORDER BY SUM(i.quantity) DESC, i."productName" ASC${limitOffset()}`
+      ? `SELECT COALESCE(i."productName", 'Removed product') AS name, i.sku, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total, COUNT(DISTINCT o.id)::int AS orders FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE ${scope()}${itemScope("i")} GROUP BY i."productName", i.sku ORDER BY SUM(i.quantity) DESC, i."productName" ASC${limitOffset()}`
       : table.table === "categories"
-        ? `SELECT COALESCE(i."categoryNameSnapshot", 'Uncategorized') AS name, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS recognized_line_total, COUNT(DISTINCT o.id)::int AS orders FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE o."deliveredAt" >= $1 AND o."deliveredAt" < $2${condition('o."branchId" = ?', filters.branchId)} AND o.status = 'DELIVERED'${itemScope("i")} GROUP BY i."categoryIdSnapshot", i."categoryNameSnapshot" ORDER BY SUM(i.quantity) DESC, name ASC${limitOffset()}`
+        ? `SELECT COALESCE(i."categoryNameSnapshot", 'Uncategorized') AS name, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS recognized_line_total, COUNT(DISTINCT o.id)::int AS orders FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE ${recognizedScope()}${itemScope("i")} GROUP BY i."categoryIdSnapshot", i."categoryNameSnapshot" ORDER BY SUM(i.quantity) DESC, name ASC${limitOffset()}`
         : table.table === "branches"
-          ? `SELECT COALESCE(b.name, 'Unassigned') AS name, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" LEFT JOIN "Branch" b ON b.id = o."branchId" WHERE ${scope}${itemScope("i")} GROUP BY b.id, b.name ORDER BY COUNT(DISTINCT o.id) DESC, name ASC${limitOffset()}`
+          ? `SELECT COALESCE(b.name, 'Unassigned') AS name, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" LEFT JOIN "Branch" b ON b.id = o."branchId" WHERE ${scope()}${itemScope("i")} GROUP BY b.id, b.name ORDER BY COUNT(DISTINCT o.id) DESC, name ASC${limitOffset()}`
           : table.table === "customers"
-            ? `SELECT COALESCE(c.name, o."contactName", 'Guest') AS name, COALESCE(c.email, '') AS email, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" LEFT JOIN "Customer" c ON c.id = o."customerId" WHERE ${scope}${itemScope("i")} GROUP BY c.id, c.name, c.email, o."contactName" ORDER BY COUNT(DISTINCT o.id) DESC, name ASC${limitOffset()}`
+            ? `SELECT COALESCE(c.name, o."contactName", 'Guest') AS name, COALESCE(c.email, '') AS email, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" LEFT JOIN "Customer" c ON c.id = o."customerId" WHERE ${scope()}${itemScope("i")} GROUP BY c.id, c.name, c.email, o."contactName" ORDER BY COUNT(DISTINCT o.id) DESC, name ASC${limitOffset()}`
             : table.table === "orders"
-              ? `SELECT o."orderNumber", o.status::text AS status, o."paymentStatus"::text AS payment_status, COALESCE(b.name, 'Unassigned') AS branch, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total, o."createdAt" AS created_at FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" LEFT JOIN "Branch" b ON b.id = o."branchId" WHERE ${scope}${itemScope("i")} GROUP BY o.id, b.name ORDER BY o."createdAt" DESC${limitOffset()}`
+              ? `SELECT o."orderNumber", o.status::text AS status, o."paymentStatus"::text AS payment_status, COALESCE(b.name, 'Unassigned') AS branch, COALESCE(SUM(i.quantity), 0)::int AS units, COALESCE(SUM(i."lineTotal"), 0)::text AS gross_line_total, o."createdAt" AS created_at FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" LEFT JOIN "Branch" b ON b.id = o."branchId" WHERE ${scope()}${itemScope("i")} GROUP BY o.id, b.name ORDER BY o."createdAt" DESC${limitOffset()}`
               : table.table === "promotions"
-                ? `SELECT p.name, COUNT(r.id)::int AS redemptions, COALESCE(SUM(r.amount), 0)::text AS discount_amount, COUNT(DISTINCT o.id)::int AS orders FROM "PromotionRedemption" r JOIN "Promotion" p ON p.id = r."promotionId" JOIN "Order" o ON o.id = r."orderId" WHERE ${scope}${(filters.productId || filters.categoryId) ? ` AND EXISTS (SELECT 1 FROM "OrderItem" scoped_item WHERE scoped_item."orderId" = o.id${itemScope("scoped_item")})` : ""} GROUP BY p.id, p.name ORDER BY COUNT(r.id) DESC, p.name ASC${limitOffset()}`
+                ? `SELECT p.name, COUNT(r.id)::int AS redemptions, COALESCE(SUM(r.amount), 0)::text AS discount_amount, COUNT(DISTINCT o.id)::int AS orders FROM "PromotionRedemption" r JOIN "Promotion" p ON p.id = r."promotionId" JOIN "Order" o ON o.id = r."orderId" WHERE ${scope()}${(filters.productId || filters.categoryId) ? ` AND EXISTS (SELECT 1 FROM "OrderItem" scoped_item WHERE scoped_item."orderId" = o.id${itemScope("scoped_item")})` : ""} GROUP BY p.id, p.name ORDER BY COUNT(r.id) DESC, p.name ASC${limitOffset()}`
                 : `SELECT i.id, p.name AS product, b.name AS branch, i.quantity, i.reserved, i."lowStockAt" AS low_stock_at, (i.quantity - i.reserved) AS available, i."updatedAt" AS updated_at FROM "InventoryLevel" i JOIN "Product" p ON p.id = i."productId" JOIN "Branch" b ON b.id = i."branchId" WHERE i."lowStockAt" > 0 AND (i.quantity - i.reserved) <= i."lowStockAt"${condition('i."branchId" = ?', filters.branchId)}${condition('i."productId" = ?', filters.productId)}${filters.categoryId ? ` AND p."categoryId" = $${values.push(filters.categoryId)}` : ""} ORDER BY available ASC, p.name ASC${limitOffset()}`;
   const rows = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(query, ...values);
-  return { table: table.table, rows, pagination: { page: table.page, pageSize: table.pageSize, hasNextPage: rows.length === table.pageSize }, notes: table.table === "categories" ? ["Category attribution is snapshotted at checkout and includes removed products."] : ["Sales tables use delivered-only recognized revenue; operational tables retain all matching orders."] };
+  return { table: table.table, rows: rows.slice(0, table.pageSize), pagination: { page: table.page, pageSize: table.pageSize, hasNextPage: rows.length > table.pageSize }, notes: table.table === "categories" ? ["Category attribution is snapshotted at checkout and includes removed products."] : ["Sales tables use delivered-only recognized revenue; operational tables retain all matching orders."] };
 }
 
 export async function GET(request?: Request) {
@@ -184,18 +193,22 @@ export async function GET(request?: Request) {
   }
   if (new URL(reportRequest.url).searchParams.get("view") === "dashboard") {
     const orderWhere = buildOrderWhere(filters);
-    const [metrics, previousMetrics, orderStatuses] = await Promise.all([
+    const [metrics, previousMetrics, orderStatuses, paymentMethods, fulfillmentModes] = await Promise.all([
       summary(filters),
       summary(previousPeriod(filters)),
       db.order.groupBy({ by: ["status"], where: orderWhere, _count: true, orderBy: { status: "asc" } }),
+      db.order.groupBy({ by: ["paymentMethod"], where: orderWhere, _count: true, _sum: { total: true }, orderBy: { paymentMethod: "asc" } }),
+      db.order.groupBy({ by: ["fulfillmentMode"], where: orderWhere, _count: true, _sum: { total: true }, orderBy: { fulfillmentMode: "asc" } }),
     ]);
     const statusCount = (status: string) => orderStatuses.find((item) => item.status === status)?._count ?? 0;
-    return NextResponse.json({ metrics, comparison: { metrics: previousMetrics }, fulfillment: { delivered: statusCount("DELIVERED"), refunded: statusCount("REFUNDED"), cancelled: statusCount("CANCELLED"), inProgress: ["NEW", "ASSIGNED_TO_BRANCH", "ASSIGNED_TO_DRIVER", "OUT_FOR_DELIVERY", "REFUND_REQUESTED"].reduce((total, status) => total + statusCount(status), 0) } });
+    return NextResponse.json({ metrics, comparison: { metrics: previousMetrics }, paymentMethods, fulfillmentModes, fulfillment: { delivered: statusCount("DELIVERED"), refunded: statusCount("REFUNDED"), cancelled: statusCount("CANCELLED"), inProgress: ["NEW", "ASSIGNED_TO_BRANCH", "ASSIGNED_TO_DRIVER", "OUT_FOR_DELIVERY", "REFUND_REQUESTED"].reduce((total, status) => total + statusCount(status), 0) } });
   }
   const orderWhere = buildOrderWhere(filters);
-  const [metrics, previousMetrics, orderStatuses, fulfillment, inventory, branches, categories, products] = await Promise.all([
+  const [metrics, previousMetrics, orderStatuses, paymentMethods, fulfillmentModes, fulfillment, inventory, branches, categories, products] = await Promise.all([
     summary(filters), summary(previousPeriod(filters)),
     db.order.groupBy({ by: ["status"], where: orderWhere, _count: true, orderBy: { status: "asc" } }),
+    db.order.groupBy({ by: ["paymentMethod"], where: orderWhere, _count: true, _sum: { total: true }, orderBy: { paymentMethod: "asc" } }),
+    db.order.groupBy({ by: ["fulfillmentMode"], where: orderWhere, _count: true, _sum: { total: true }, orderBy: { fulfillmentMode: "asc" } }),
     fulfillmentDuration(filters),
     inventoryReport(filters),
     db.branch.findMany({ orderBy: { name: "asc" }, take: FILTER_OPTION_LIMIT + 1, select: { id: true, name: true } }),
@@ -208,10 +221,12 @@ export async function GET(request?: Request) {
       ? "Orders are distinct orders created during the UTC dates that contain at least one matching item. Units and gross line totals include only matching items; order-level discounts and delivery fees are not attributed."
       : "Orders created from the UTC start date through the UTC end date, inclusive. Gross totals include all statuses; recognized revenue includes only orders delivered in the selected period.",
     period: { start: filters.start.toISOString(), end: new Date(filters.end.getTime() - 1).toISOString() },
-    filters: { branchId: filters.branchId ?? null, categoryId: filters.categoryId ?? null, productId: filters.productId ?? null },
+    filters: { branchId: filters.branchId ?? null, categoryId: filters.categoryId ?? null, productId: filters.productId ?? null, paymentMethod: filters.paymentMethod ?? null, status: filters.status ?? null, fulfillmentMode: filters.fulfillmentMode ?? null },
     metrics,
     comparison: { period: { start: previousPeriod(filters).start.toISOString(), end: new Date(previousPeriod(filters).end.getTime() - 1).toISOString() }, metrics: previousMetrics },
     orderStatuses,
+    paymentMethods,
+    fulfillmentModes,
     fulfillment: { delivered: statusCount("DELIVERED"), refunded: statusCount("REFUNDED"), cancelled: statusCount("CANCELLED"), inProgress: ["NEW", "ASSIGNED_TO_BRANCH", "ASSIGNED_TO_DRIVER", "OUT_FOR_DELIVERY", "REFUND_REQUESTED"].reduce((total, status) => total + statusCount(status), 0), duration: fulfillment },
     inventory: inventory.inventory,
     inventoryCoverage: inventory.inventoryCoverage,

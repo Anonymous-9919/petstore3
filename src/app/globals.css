@@ -124,6 +124,17 @@ html::-webkit-scrollbar-thumb {
   text-decoration: underline;
 }
 
+.admin-shell :focus-visible {
+  outline: 3px solid #ff6600;
+  outline-offset: 2px;
+}
+
+/* Keep keyboard focus visible throughout the public storefront as well. */
+:focus-visible {
+  outline: 3px solid #ff6600;
+  outline-offset: 2px;
+}
+
 @keyframes flipInY {
   from {
     transform: perspective(400px) rotate3d(0, 1, 0, 90deg);

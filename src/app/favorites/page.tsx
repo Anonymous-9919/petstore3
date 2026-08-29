@@ -1,19 +1,23 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Heart } from "lucide-react";
 import ProductCard from "@/components/ProductCard";
 import { SubHeader } from "@/components/Header";
 import { getMsg } from "@/lib/i18n";
 import { useLang, useWishlist } from "@/lib/state";
-import { getProducts } from "@/data/loader";
-import { use } from "react";
+import { useCatalog } from "@/hooks/useCatalog";
 
 export default function FavoritesPage() {
   const lang = useLang((s) => s.lang);
   const t = getMsg;
   const ids = useWishlist((s) => s.ids);
-  const products = use(getProducts());
+  const setIds = useWishlist((s) => s.setIds);
+  const { products } = useCatalog();
+
+  useEffect(() => {
+    fetch("/api/customer/wishlist").then((response) => response.ok ? response.json() : null).then((data) => { if (data?.ids) setIds(data.ids); }).catch(() => undefined);
+  }, [setIds]);
 
   const list = useMemo(
     () => products.filter((p) => ids.includes(p.id)),

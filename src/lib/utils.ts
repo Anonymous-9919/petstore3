@@ -338,19 +338,6 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
-const UNSAFE = /<script[\s\S]*?<\/script\s*>/gi;
-const EVENT_ATTRS = /\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
-const JAVASCRIPT_URI = /\s(href|src)\s*=\s*["']?javascript:[^"'>]*["']?/gi;
-
-export function sanitizeHtml(html: string): string {
-  if (!html) return "";
-  return html
-    .replace(UNSAFE, "")
-    .replace(EVENT_ATTRS, "")
-    .replace(JAVASCRIPT_URI, "")
-    .trim();
-}
-
 export function inStock(p: { not_available?: boolean; inventory_on_hand?: number | null }): boolean {
   if (p.not_available) return false;
   if (typeof p.inventory_on_hand === "number" && p.inventory_on_hand <= 0) return false;

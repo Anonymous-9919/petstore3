@@ -41,15 +41,12 @@ describe("checkout customer identity", () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it("may update an unlinked guest profile while retaining its identity", async () => {
-    mocks.findMany.mockResolvedValue([{ id: "guest-customer", email: null, userId: null }]);
-    mocks.update.mockResolvedValue({ id: "guest-customer", email: contact.email, userId: null });
+  it("reuses an unlinked guest profile without changing its identity", async () => {
+    const guest = { id: "guest-customer", email: null, userId: null };
+    mocks.findMany.mockResolvedValue([guest]);
 
-    await resolveCheckoutCustomer(client as never, contact);
-    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "guest-customer" },
-      data: { name: contact.name, email: contact.email },
-    }));
+    await expect(resolveCheckoutCustomer(client as never, contact)).resolves.toEqual(guest);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it("leaves ambiguous legacy phone matches unlinked", async () => {

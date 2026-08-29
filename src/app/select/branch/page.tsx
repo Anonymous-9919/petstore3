@@ -1,13 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { CategoryHeader } from "@/components/Header";
 import { KeyboardArrowDownIcon, LocalShippingIcon, StorefrontIcon } from "@/components/MuiIcons";
-import { getBranches, getProvinces, deliveryData } from "@/data/loader";
 import { useDelivery, useLang } from "@/lib/state";
-import { cn, scheduledDays } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 type RawArea = {
   id: number;
@@ -16,14 +15,19 @@ type RawArea = {
   area_id: number;
   province_en: string;
   price: number;
+  branch: number;
 };
+
+type RawBranch = { id: number; name: string; ar_name: string };
+type RawProvince = { name: string; ar_name: string };
 
 export default function SelectBranchPage() {
   const lang = useLang((s) => s.lang);
   const ar = lang === "ar";
   const router = useRouter();
-  const provinces = getProvinces();
-  const branches = getBranches();
+  const [provinces, setProvinces] = useState<RawProvince[]>([]);
+  const [branches, setBranches] = useState<RawBranch[]>([]);
+  const [charges, setCharges] = useState<RawArea[]>([]);
 
   const mode = useDelivery((s) => s.mode);
   const setMode = useDelivery((s) => s.setMode);
@@ -36,9 +40,16 @@ export default function SelectBranchPage() {
   const [pickedArea, setPickedArea] = useState<RawArea | null>(null);
   const [pickedBranchId, setPickedBranchId] = useState<number | null>(null);
 
-  const charges = (
-    deliveryData as unknown as { branch_delivery_charges: RawArea[] }
-  ).branch_delivery_charges;
+  useEffect(() => {
+    fetch("/api/storefront/fulfillment")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => {
+        setBranches(data.branches.map((branch: { id: number; name: string; nameAr: string }) => ({ id: branch.id, name: branch.name, ar_name: branch.nameAr })));
+        setProvinces(data.provinces.map((province: { name: string; nameAr: string }) => ({ name: province.name, ar_name: province.nameAr })));
+        setCharges(data.provinces.flatMap((province: { name: string; areas: Array<{ id: number; name: string; nameAr: string; branchId: number; fee: string }> }) => province.areas.map((area) => ({ id: area.id, area: area.name, area_ar: area.nameAr, area_id: area.id, province_en: province.name, price: Number(area.fee), branch: area.branchId }))));
+      })
+      .catch(() => undefined);
+  }, []);
 
   const areasByProvince = useMemo(() => {
     const m = new Map<string, RawArea[]>();
@@ -107,20 +118,25 @@ export default function SelectBranchPage() {
     (mode === "delivery" && !!pickedArea) ||
     (mode === "pickup" && pickedBranchId != null);
 
-  const onSave = () => {
+  const onSave = async () => {
+    let selectedBranchId: number | null = null;
     if (mode === "delivery" && pickedArea) {
-      setBranch(pickedArea.id);
+      const br = branches.find((branch) => branch.id === pickedArea.branch);
+      setBranch(pickedArea.branch, br?.name, br?.ar_name);
       setArea(pickedArea.area_id, pickedArea.area, pickedArea.area_ar);
+      selectedBranchId = pickedArea.branch;
     } else if (mode === "pickup" && pickedBranchId != null) {
       const br = branches.find((b) => b.id === pickedBranchId);
       setBranch(pickedBranchId, br?.name, br?.ar_name);
       setArea(0, "", "");
+      selectedBranchId = pickedBranchId;
     }
-    const days = scheduledDays(mode);
-    const firstDay = days[0];
-    const firstSlot = firstDay?.slots.find((s) => s.active) || firstDay?.slots[0];
-    if (firstDay && firstSlot) {
-      setDeliveryTime({ type: "scheduled", date: firstDay.key, start: firstSlot.start, end: firstSlot.end });
+    if (selectedBranchId) {
+      const response = await fetch(`/api/storefront/fulfillment?branchId=${selectedBranchId}&mode=${mode}`);
+      const data = response.ok ? await response.json() : { days: [] };
+      const day = data.days.find((candidate: { active: boolean }) => candidate.active);
+      const slot = day?.slots.find((candidate: { active: boolean }) => candidate.active);
+      if (day && slot) setDeliveryTime({ type: "scheduled", date: day.key, start: slot.start, end: slot.end });
     }
     router.push("/");
   };

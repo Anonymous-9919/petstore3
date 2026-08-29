@@ -16,7 +16,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ tr
       const current = await tx.inventoryTransfer.findUnique({ where: { id: transferId }, include: { lines: true } });
       if (!current) return null;
       const expected = parsed.data.action === "dispatch" ? "DRAFT" : parsed.data.action === "receive" ? "IN_TRANSIT" : current.status === "DRAFT" || current.status === "IN_TRANSIT" ? current.status : "";
-      if (current.status !== expected) throw new Error(`Transfer cannot be ${parsed.data.action}ed from ${current.status}.`);
+      const actionPastTense = parsed.data.action === "receive" ? "received" : parsed.data.action === "cancel" ? "cancelled" : "dispatched";
+      if (current.status !== expected) throw new Error(`Transfer cannot be ${actionPastTense} from ${current.status}.`);
       const missingVariantProductIds = current.lines.filter((line) => !line.variantId).map((line) => line.productId);
       const defaultVariants = missingVariantProductIds.length ? await tx.productVariant.findMany({ where: { productId: { in: missingVariantProductIds }, isDefault: true }, select: { id: true, productId: true } }) : [];
       const normalizedLines = current.lines.map((line) => ({ ...line, variantId: line.variantId ?? defaultVariants.find((variant) => variant.productId === line.productId)?.id }));
@@ -50,7 +51,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ tr
       }
       const status = parsed.data.action === "dispatch" ? "IN_TRANSIT" : parsed.data.action === "receive" ? "RECEIVED" : "CANCELLED";
       const updated = await tx.inventoryTransfer.update({ where: { id: current.id }, data: { status, ...(status === "IN_TRANSIT" ? { dispatchedAt: new Date() } : {}), ...(status === "RECEIVED" ? { receivedAt: new Date(), receivedById: authorization.user.id } : {}), ...(status === "CANCELLED" ? { cancelledAt: new Date() } : {}) } });
-      await tx.auditLog.create({ data: { actorId: authorization.user.id, action: `inventory.transfer_${parsed.data.action}ed`, entityType: "inventoryTransfer", entityId: current.id, before: { status: current.status }, after: { status: updated.status } } });
+      await tx.auditLog.create({ data: { actorId: authorization.user.id, action: `inventory.transfer_${actionPastTense}`, entityType: "inventoryTransfer", entityId: current.id, before: { status: current.status }, after: { status: updated.status } } });
       return updated;
     }, { isolationLevel: "Serializable" });
     if (!transfer) return NextResponse.json({ error: "Transfer was not found." }, { status: 404 });

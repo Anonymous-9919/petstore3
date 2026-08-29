@@ -465,6 +465,7 @@ model ProductImage {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, sortOrder])
+  @@unique([productId, path])
 }
 
 model ProductOptionGroup {

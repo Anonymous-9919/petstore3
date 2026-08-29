@@ -9,10 +9,11 @@ import { cn } from "@/lib/utils";
 const MUI_SHADOW =
   "shadow-[0_3px_1px_-2px_rgba(0,0,0,0.2),0_2px_2px_0_rgba(0,0,0,0.14),0_1px_5px_0_rgba(0,0,0,0.12)]";
 
-function PanelButton({ children, href }: { children: React.ReactNode; href: string }) {
+function PanelButton({ children, href, label }: { children: React.ReactNode; href: string; label: string }) {
   return (
     <Link
       href={href}
+      aria-label={label}
       className={`flex h-10 w-10 items-center justify-center rounded-full bg-white ${MUI_SHADOW}`}
     >
       {children}
@@ -42,25 +43,25 @@ export default function DesktopPanel() {
           {ar ? (
             <>
               <LangToggle className={`border-0 ${MUI_SHADOW}`} />
-              <PanelButton href="/search">
+              <PanelButton href="/search" label="Search">
                 <SearchIcon className="h-[21px] w-[21px] text-black" />
               </PanelButton>
-              <PanelButton href="/profile/orders">
+              <PanelButton href="/profile/orders" label="Orders">
                 <HistoryIcon className="h-[21px] w-[21px] text-black/[0.87]" />
               </PanelButton>
-              <PanelButton href="/cart">
+              <PanelButton href="/cart" label="Cart">
                 <PackageBagIcon className="h-[20px] w-[20px] text-black/[0.87]" />
               </PanelButton>
             </>
           ) : (
             <>
-              <PanelButton href="/search">
+              <PanelButton href="/search" label="Search">
                 <SearchIcon className="h-[21px] w-[21px] text-black" />
               </PanelButton>
-              <PanelButton href="/profile/orders">
+              <PanelButton href="/profile/orders" label="Orders">
                 <HistoryIcon className="h-[21px] w-[21px] text-black/[0.87]" />
               </PanelButton>
-              <PanelButton href="/cart">
+              <PanelButton href="/cart" label="Cart">
                 <PackageBagIcon className="h-[20px] w-[20px] text-black/[0.87]" />
               </PanelButton>
               <LangToggle className={`border-0 ${MUI_SHADOW}`} />

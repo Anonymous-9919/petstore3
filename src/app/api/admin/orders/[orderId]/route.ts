@@ -3,9 +3,12 @@ import { z } from "zod";
 import { canManage, currentUser } from "@/server/auth";
 import { notifyOrderStatusChanged } from "@/server/notifications/email";
 import { notifyStaff } from "@/server/notifications/staff";
-import { transitionCashOrder, transitionOperationalOrder } from "@/server/services/payments";
+import { requestOrderRefund, transitionCashOrder, transitionOperationalOrder } from "@/server/services/payments";
 
-const updateSchema = z.object({ status: z.enum(["ASSIGNED_TO_BRANCH", "CANCELLED", "ASSIGNED_TO_DRIVER", "OUT_FOR_DELIVERY", "DELIVERED"]) });
+const updateSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.enum(["ASSIGNED_TO_BRANCH", "CANCELLED", "ASSIGNED_TO_DRIVER", "OUT_FOR_DELIVERY", "DELIVERED"]) }),
+  z.object({ status: z.literal("REFUND_REQUESTED"), reason: z.string().trim().min(3).max(1_000) }),
+]);
 
 export async function PATCH(request: Request, context: { params: Promise<{ orderId: string }> }) {
   const user = await currentUser();
@@ -15,7 +18,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ order
   const { orderId } = await context.params;
 
   try {
-    const result = parsed.data.status === "ASSIGNED_TO_BRANCH" || parsed.data.status === "CANCELLED"
+    const result = parsed.data.status === "REFUND_REQUESTED"
+      ? await requestOrderRefund({ orderId, actorId: user.id, reason: parsed.data.reason })
+      : parsed.data.status === "ASSIGNED_TO_BRANCH" || parsed.data.status === "CANCELLED"
       ? await transitionCashOrder({ orderId, targetStatus: parsed.data.status, actorId: user.id })
       : await transitionOperationalOrder({ orderId, targetStatus: parsed.data.status, actorId: user.id });
     if (result.changed) {

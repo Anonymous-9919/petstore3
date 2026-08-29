@@ -151,7 +151,7 @@ export function UnderlinePhoneField({
   const ar = lang === "ar";
 
   const handleChange = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").replace(/^965/, "");
+    const digits = raw.replace(/\D/g, "").replace(/^00965/, "").replace(/^965/, "").slice(0, 8);
     onChange(`+965${digits}`);
   };
 

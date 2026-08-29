@@ -3,6 +3,8 @@ import { Cairo, Quicksand } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
 import WhatsAppFloat from "@/components/WhatsAppFloat";
+import { StorefrontPopups } from "@/components/StorefrontPopups";
+import { getStorefrontPopups } from "@/server/popups";
 
 const quicksand = Quicksand({
   weight: ["400", "700"],
@@ -23,9 +25,10 @@ export const metadata: Metadata = {
   description: "Pet Store Kuwait — شريكك الموثوق في عالم الحيوانات الأليفة",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const popups = await getStorefrontPopups();
   return (
     <html
       lang="en"
@@ -36,6 +39,7 @@ export default function RootLayout({
       <body>
         <Providers>{children}</Providers>
         <WhatsAppFloat />
+        <StorefrontPopups popups={popups} />
       </body>
     </html>
   );

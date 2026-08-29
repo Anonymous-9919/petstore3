@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeAdminApi } from "@/server/auth";
 import { db } from "@/server/db";
+import { normalizePromotionSchedule } from "@/server/promotions";
 import { promotionInputSchema } from "@/server/validation/promotion";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,16 @@ export async function hasValidPromotionProducts(ids: string[]) {
   if (!ids.length) return true;
   const products = await db.product.count({ where: { id: { in: ids }, isActive: true, archivedAt: null } });
   return products === new Set(ids).size;
+}
+
+export async function hasValidPromotionReferences(input: { scope: "PRODUCT" | "CATEGORY" | "CART"; targetIds: string[]; branchIds: string[]; areaIds: string[] }) {
+  const uniqueTargets = new Set(input.targetIds);
+  const [targets, branches, areas] = await Promise.all([
+    input.scope === "PRODUCT" ? db.product.count({ where: { id: { in: [...uniqueTargets] }, isActive: true, archivedAt: null } }) : input.scope === "CATEGORY" ? db.category.count({ where: { id: { in: [...uniqueTargets] }, isActive: true, archivedAt: null } }) : Promise.resolve(0),
+    input.branchIds.length ? db.branch.count({ where: { id: { in: input.branchIds }, isActive: true } }) : Promise.resolve(0),
+    input.areaIds.length ? db.area.count({ where: { id: { in: input.areaIds }, isActive: true } }) : Promise.resolve(0),
+  ]);
+  return targets === uniqueTargets.size && branches === input.branchIds.length && areas === input.areaIds.length;
 }
 
 export async function GET(request: Request) {
@@ -37,7 +48,8 @@ export async function POST(request: Request) {
   const parsed = promotionInputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid promotion." }, { status: 400 });
   if (!await hasValidPromotionProducts([...parsed.data.qualifyingProductIds, ...parsed.data.rewardProductIds])) return NextResponse.json({ error: "Promotion qualifying and reward products must be active products." }, { status: 400 });
-  const { targetIds, branchIds, areaIds, scope, ...data } = parsed.data;
+  if (!await hasValidPromotionReferences(parsed.data)) return NextResponse.json({ error: "Promotion targets, branches, and areas must be active." }, { status: 400 });
+  const { targetIds, branchIds, areaIds, scope, ...data } = normalizePromotionSchedule(parsed.data);
   try {
     const promotion = await db.promotion.create({
       data: {

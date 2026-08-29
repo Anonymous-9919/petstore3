@@ -3,6 +3,7 @@ import { z } from "zod";
 const nullableDate = z.string().trim().datetime({ offset: true }).nullable().optional().transform((value) => value == null ? null : new Date(value));
 const nullableLimit = z.coerce.number().int().min(1).max(100000000).nullable().optional();
 const nullableMoney = z.coerce.number().finite().min(0).max(999999999).nullable().optional();
+const uniqueIds = z.array(z.string().uuid()).max(100).refine((ids) => new Set(ids).size === ids.length, "IDs must be unique.");
 
 export const promotionInputSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -24,11 +25,11 @@ export const promotionInputSchema = z.object({
   startsAt: nullableDate,
   endsAt: nullableDate,
   isActive: z.boolean().default(true),
-  targetIds: z.array(z.string().uuid()).max(100).default([]),
-  branchIds: z.array(z.string().uuid()).max(100).default([]),
-  areaIds: z.array(z.string().uuid()).max(100).default([]),
-  qualifyingProductIds: z.array(z.string().uuid()).max(100).default([]),
-  rewardProductIds: z.array(z.string().uuid()).max(100).default([]),
+  targetIds: uniqueIds.default([]),
+  branchIds: uniqueIds.default([]),
+  areaIds: uniqueIds.default([]),
+  qualifyingProductIds: uniqueIds.default([]),
+  rewardProductIds: uniqueIds.default([]),
   rewardQuantity: z.coerce.number().int().min(1).max(1_000).default(1),
 }).superRefine((value, context) => {
   if (value.type === "PERCENTAGE" && value.value > 100) context.addIssue({ code: "custom", path: ["value"], message: "Percentage discounts cannot exceed 100%." });

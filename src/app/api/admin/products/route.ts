@@ -33,6 +33,8 @@ export async function POST(request: Request) {
   try {
     // New products always have a default variant and an independent stock row at every branch.
     const product = await db.$transaction(async (tx) => {
+      const category = await tx.category.findFirst({ where: { id: parsed.data.categoryId, isActive: true, archivedAt: null }, select: { id: true } });
+      if (!category) throw new Error("CATEGORY_UNAVAILABLE");
       const created = await tx.product.create({
         data: { ...parsed.data, variants: { create: { sku: parsed.data.sku, price: parsed.data.basePrice, compareAtPrice: parsed.data.compareAtPrice, isDefault: true, isActive: parsed.data.isActive } } },
         include: { variants: { where: { isDefault: true }, select: { id: true } } },

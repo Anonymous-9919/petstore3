@@ -112,11 +112,34 @@ export async function importZipImages(zip: Buffer, targets: Array<{ row: number;
   const target = new Map<string, number>();
   for (const item of targets) for (const key of [item.variantSku, item.productSku, item.handle]) if (key) target.set(key.trim().toLowerCase(), target.get(key.trim().toLowerCase()) ?? item.row);
   const result: Record<number, string[]> = {};
-  for (const entry of zipEntries(zip)) {
-    const basename = entry.name.split("/").pop()!.replace(/\.[^.]+$/, "").toLowerCase(); const row = target.get(basename);
-    if (!row) continue;
-    const path = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${imageTypes[entry.type]}`;
-    (result[row] ??= []).push(await upload(path, entry.type, Readable.from(entry.bytes)));
+  const assets: Array<{ path: string; name: string; contentType: string; size: number }> = [];
+  const unmatched: string[] = [];
+  try {
+    for (const entry of zipEntries(zip)) {
+      const basename = entry.name.split("/").pop()!.replace(/\.[^.]+$/, "").toLowerCase();
+      const identity = basename.replace(/__\d+$/, "");
+      const row = target.get(identity);
+      if (!row) { unmatched.push(entry.name); continue; }
+      const path = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${imageTypes[entry.type]}`;
+      (result[row] ??= []).push(await upload(path, entry.type, Readable.from(entry.bytes)));
+      assets.push({ path, name: entry.name, contentType: entry.type, size: entry.bytes.length });
+    }
+  } catch (error) {
+    await removeImportedImages(assets.map((asset) => asset.path));
+    throw error;
   }
-  return result;
+  return { pathsByRow: result, assets, unmatched };
+}
+
+/** Best-effort compensation for objects that were uploaded but never attached. */
+export async function removeImportedImages(paths: string[]) {
+  if (!paths.length) return true;
+  const admin = supabaseAdmin();
+  if (!admin) return false;
+  const { error } = await admin.storage.from(BUCKET).remove(paths);
+  if (error) {
+    console.error("Unable to clean up imported media.", error);
+    return false;
+  }
+  return true;
 }

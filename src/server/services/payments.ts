@@ -555,6 +555,7 @@ export async function transitionCashOrder(input: {
 
     const targetOrderStatus = input.targetStatus === "CANCELLED" ? OrderStatus.CANCELLED : OrderStatus.ASSIGNED_TO_BRANCH;
     const targetPaymentStatus = input.targetStatus === "CANCELLED" ? PaymentStatus.FAILED : PaymentStatus.CASH_DUE;
+    const now = new Date();
     const claimed = await tx.order.updateMany({
       where: {
         id: order.id,
@@ -562,7 +563,7 @@ export async function transitionCashOrder(input: {
         paymentMethod: PaymentMethod.CASH,
         paymentStatus: PaymentStatus.CASH_DUE,
       },
-      data: { status: targetOrderStatus, paymentStatus: targetPaymentStatus, ...(input.targetStatus === "ASSIGNED_TO_BRANCH" ? { acceptedAt: new Date() } : {}) },
+      data: { status: targetOrderStatus, paymentStatus: targetPaymentStatus, ...(input.targetStatus === "ASSIGNED_TO_BRANCH" ? { acceptedAt: now } : { cancelledAt: now }) },
     });
     if (claimed.count !== 1) {
       order = await tx.order.findUnique({ where: { id: input.orderId }, include: cashOrderInclude });
@@ -615,10 +616,39 @@ export async function transitionCashOrder(input: {
 }
 
 const operationalTransitions: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  [OrderStatus.NEW]: [OrderStatus.ASSIGNED_TO_BRANCH],
   [OrderStatus.ASSIGNED_TO_BRANCH]: [OrderStatus.ASSIGNED_TO_DRIVER],
   [OrderStatus.ASSIGNED_TO_DRIVER]: [OrderStatus.OUT_FOR_DELIVERY],
   [OrderStatus.OUT_FOR_DELIVERY]: [OrderStatus.DELIVERED],
 };
+
+export async function requestOrderRefund(input: { orderId: string; actorId: string; reason: string }) {
+  return db.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({ where: { id: input.orderId }, include: { customer: { select: { email: true } }, payments: true } });
+    if (!order) integrityError("This order was not found.", "NOT_FOUND");
+    if (order.status === OrderStatus.REFUND_REQUESTED) return { order, email: order.customer?.email, changed: false };
+    if (order.status !== OrderStatus.DELIVERED || (order.paymentStatus !== PaymentStatus.PAID && order.paymentStatus !== PaymentStatus.CASH_COLLECTED)) {
+      integrityError("Only a settled delivered order can be submitted for refund.", "CONTRADICTORY_OUTCOME");
+    }
+    const settledPayment = order.payments.find((payment) => payment.status === PaymentStatus.PAID || payment.status === PaymentStatus.CASH_COLLECTED);
+    if (!settledPayment) integrityError("The settled payment record is unavailable.", "INVALID_STATE");
+
+    const claimed = await tx.order.updateMany({
+      where: { id: order.id, status: OrderStatus.DELIVERED, paymentStatus: order.paymentStatus },
+      data: { status: OrderStatus.REFUND_REQUESTED },
+    });
+    if (claimed.count !== 1) {
+      const current = await tx.order.findUnique({ where: { id: order.id }, include: { customer: { select: { email: true } } } });
+      if (current?.status === OrderStatus.REFUND_REQUESTED) return { order: current, email: current.customer?.email, changed: false };
+      integrityError("The order changed concurrently.", "CONTRADICTORY_OUTCOME");
+    }
+    await tx.orderStatusHistory.create({ data: { orderId: order.id, fromStatus: OrderStatus.DELIVERED, toStatus: OrderStatus.REFUND_REQUESTED, note: input.reason, actorId: input.actorId } });
+    await tx.auditLog.create({ data: { actorId: input.actorId, action: "order.refund.requested", entityType: "order", entityId: order.id, before: { status: OrderStatus.DELIVERED, paymentStatus: order.paymentStatus }, after: { status: OrderStatus.REFUND_REQUESTED, reason: input.reason } } });
+    const updated = await tx.order.findUnique({ where: { id: order.id } });
+    if (!updated) integrityError("The order no longer exists.", "NOT_FOUND");
+    return { order: updated, email: order.customer?.email, changed: true };
+  });
+}
 
 export async function transitionOperationalOrder(input: { orderId: string; targetStatus: OrderStatus; actorId: string }) {
   return db.$transaction(async (tx) => {
@@ -626,6 +656,7 @@ export async function transitionOperationalOrder(input: { orderId: string; targe
     if (!order) integrityError("This order was not found.", "NOT_FOUND");
     if (order.status === input.targetStatus) return { order, email: order.customer?.email, changed: false };
     if (!operationalTransitions[order.status]?.includes(input.targetStatus)) integrityError("This order cannot be updated from its current state.", "CONTRADICTORY_OUTCOME");
+    if (order.status === OrderStatus.NEW && (order.paymentMethod === PaymentMethod.CASH || order.paymentStatus !== PaymentStatus.PAID)) integrityError("Only paid online orders can be accepted for fulfillment.", "CONTRADICTORY_OUTCOME");
     const now = new Date();
     const claimed = await tx.order.updateMany({
       where: { id: order.id, status: order.status },

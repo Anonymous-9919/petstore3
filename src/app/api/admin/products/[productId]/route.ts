@@ -32,6 +32,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ produ
     const product = await db.$transaction(async (tx) => {
       const existing = await tx.product.findUnique({ where: { id: productId }, include: { variants: { select: { id: true, sku: true, barcode: true, name: true, nameAr: true, price: true, compareAtPrice: true, cost: true, weight: true, isDefault: true, isActive: true } } } });
       if (!existing) throw new Error("PRODUCT_NOT_FOUND");
+      const category = await tx.category.findFirst({ where: { id: productData.categoryId, isActive: true, archivedAt: null }, select: { id: true } });
+      if (!category) throw new Error("CATEGORY_UNAVAILABLE");
       const updated = await tx.product.update({ where: { id: productId }, data: productData });
       const defaultVariantId = await tx.productVariant.findFirst({ where: { productId, isDefault: true }, select: { id: true } });
       const { id: _defaultVariantId, ...defaultVariantData } = defaultVariant ?? {};

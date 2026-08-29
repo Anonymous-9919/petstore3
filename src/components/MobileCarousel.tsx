@@ -5,8 +5,10 @@ import { storeData } from "@/data/loader";
 
 const SLIDER_INTERVAL = 3000;
 
-export default function MobileCarousel() {
-  const images = (storeData as { slider_images?: string[] }).slider_images || [];
+type Banner = { path: string; mobilePath?: string | null; alt: string | null; altAr: string | null };
+
+export default function MobileCarousel({ banners = [] }: { banners?: Banner[] }) {
+  const images: Banner[] = banners.length ? banners : ((storeData as { slider_images?: string[] }).slider_images || []).map((path) => ({ path, alt: null, altAr: null }));
   const [active, setActive] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -32,13 +34,13 @@ export default function MobileCarousel() {
         className="flex w-full snap-x snap-mandatory overflow-x-auto no-scrollbar"
         style={{ scrollBehavior: "smooth" }}
       >
-        {images.map((src, i) => (
+        {images.map((image, i) => (
           <div key={i} className="w-full shrink-0 snap-start">
             <div
               className="h-[300px] w-full bg-cover bg-center"
-              style={{ backgroundImage: `url(${src})` }}
+               style={{ backgroundImage: `url(${image.mobilePath || image.path})` }}
               role="img"
-              aria-label={`slide-${i}`}
+              aria-label={image.alt ?? image.altAr ?? `slide-${i}`}
             />
           </div>
         ))}

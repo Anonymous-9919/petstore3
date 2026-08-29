@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getMsg } from "@/lib/i18n";
 import { useDelivery, useLang } from "@/lib/state";
 import {
   cn,
   dateOptionLabel,
-  scheduledDays,
   slotRangeText,
 } from "@/lib/utils";
 import { KeyboardArrowDownIcon, ScheduleIcon } from "@/components/MuiIcons";
@@ -112,34 +111,36 @@ export default function DeliveryTimeDrawer({
   const expectedDate = useDelivery((s) => s.expectedDate);
   const expectedStart = useDelivery((s) => s.expectedStart);
   const expectedEnd = useDelivery((s) => s.expectedEnd);
+  const branchId = useDelivery((s) => s.branchId);
   const setDeliveryTime = useDelivery((s) => s.setDeliveryTime);
+  const [days, setDays] = useState<Array<{ key: string; active: boolean; slots: Array<{ start: string; end: string; active: boolean }> }>>([]);
+  const [dateKey, setDateKey] = useState("");
+  const [slotKey, setSlotKey] = useState("");
 
-  const days = scheduledDays(mode);
-  const [dateKey, setDateKey] = useState(() => {
-    if (expectedDate && days.some((d) => d.key === expectedDate)) {
-      return expectedDate;
-    }
-    const firstActive = days.find((d) => d.active);
-    return (firstActive || days[0]).key;
-  });
-  const day = days.find((d) => d.key === dateKey) || days[0];
-  const activeSlots = day.slots.filter((s) => s.active);
-  const [slotKey, setSlotKey] = useState(() => {
-    if (
-      expectedStart &&
-      activeSlots.some((s) => s.start === expectedStart) &&
-      expectedEnd
-    ) {
-      return `${expectedStart} - ${expectedEnd}`;
-    }
-    const first = activeSlots[0] || day.slots[0];
-    return `${first.start} - ${first.end}`;
-  });
+  useEffect(() => {
+    if (!open || !branchId) return;
+    fetch(`/api/storefront/fulfillment?branchId=${branchId}&mode=${mode}`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => {
+        const nextDays = data.days.filter((day: { active: boolean }) => day.active);
+        const selectedDay = nextDays.find((day: { key: string }) => day.key === expectedDate) ?? nextDays[0];
+        const selectedSlot = selectedDay?.slots.find((slot: { start: string; end: string; active: boolean }) => slot.active && slot.start === expectedStart && slot.end === expectedEnd) ?? selectedDay?.slots.find((slot: { active: boolean }) => slot.active);
+        setDays(nextDays);
+        setDateKey(selectedDay?.key ?? "");
+        setSlotKey(selectedSlot ? `${selectedSlot.start} - ${selectedSlot.end}` : "");
+        if (selectedDay && selectedSlot && (selectedDay.key !== expectedDate || selectedSlot.start !== expectedStart || selectedSlot.end !== expectedEnd)) {
+          setDeliveryTime({ type: "scheduled", date: selectedDay.key, start: selectedSlot.start, end: selectedSlot.end });
+        }
+      })
+      .catch(() => setDays([]));
+  }, [open, branchId, mode, expectedDate, expectedStart, expectedEnd]);
+
+  const day = days.find((candidate) => candidate.key === dateKey) || days[0];
+
+  if (!open || !day) return null;
 
   const currentSlot =
     day.slots.find((s) => `${s.start} - ${s.end}` === slotKey) || day.slots[0];
-
-  if (!open) return null;
 
   const onPickDate = (key: string) => {
     const nd = days.find((d) => d.key === key) || day;

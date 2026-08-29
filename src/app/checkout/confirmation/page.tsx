@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,15 +13,12 @@ import {
   PersonIcon,
 } from "@/components/Checkout";
 import { LocationOnIcon } from "@/components/MuiIcons";
-import { getBranchAreas, getBranches } from "@/data/loader";
 import { getMsg } from "@/lib/i18n";
 import { useCart, useDelivery, useLang } from "@/lib/state";
-import { cn, deliveryRange, fmtPrice, getAreaLatLng, pickupRange } from "@/lib/utils";
+import { cn, fmtPrice, slotText } from "@/lib/utils";
 import DeliveryMap from "@/components/DeliveryMap";
 import {
-  AppleLogoIcon,
   CashBagIcon,
-  CreditCardIcon2,
   KnetCardIcon,
   MinusIcon,
   PlusIcon,
@@ -29,17 +26,8 @@ import {
 
 const paymentMethods = [
   { key: "cash", msg: "cash", Icon: CashBagIcon },
-  { key: "knet", msg: "knet", Icon: KnetCardIcon },
-  { key: "credit", msg: "credit", Icon: CreditCardIcon2 },
-  { key: "applepay", msg: "applePay", Icon: AppleLogoIcon },
+  ...(process.env.NEXT_PUBLIC_MOCK_PAYMENTS_ENABLED === "true" ? [{ key: "knet", msg: "knet", Icon: KnetCardIcon }] : []),
 ] as const;
-
-const BRANCH_COORDS: Record<number, { lat: number; lng: number }> = {
-  2712: { lat: 29.2677, lng: 47.9543 },
-  3285: { lat: 29.3333, lng: 48.0833 },
-};
-
-const FALLBACK_COORDS = { lat: 29.2677, lng: 47.9543 };
 
 export default function CheckoutConfirmationPage() {
   const router = useRouter();
@@ -68,29 +56,67 @@ export default function CheckoutConfirmationPage() {
   const additional = useDelivery((s) => s.additional);
   const payment = useDelivery((s) => s.payment);
   const setPayment = useDelivery((s) => s.setPayment);
+  const expectedDate = useDelivery((s) => s.expectedDate);
+  const expectedStart = useDelivery((s) => s.expectedStart);
+  const expectedEnd = useDelivery((s) => s.expectedEnd);
 
   const [editing, setEditing] = useState<{ key: string; qty: number } | null>(null);
   const [draftQty, setDraftQty] = useState(1);
   const [payError, setPayError] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
+  const [fulfillment, setFulfillment] = useState<{ fee: number; branch?: { name: string; nameAr: string; latitude: string | null; longitude: string | null }; area?: { latitude: string | null; longitude: string | null } }>({ fee: 0 });
+  const [promotionDraft, setPromotionDraft] = useState("");
+  const [promotionCode, setPromotionCode] = useState("");
+  const [quote, setQuote] = useState<{ subtotal: string; deliveryFee: string; discountTotal: string; total: string; promotion: { code: string | null; name: string } | null } | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
 
-  const fee = useMemo(() => {
-    if (mode !== "delivery" || branchId == null || areaId == null) return 0;
-    const a = getBranchAreas(branchId).find((x) => x.id === areaId);
-    return a ? a.price : 0;
+  useEffect(() => {
+    fetch("/api/storefront/fulfillment").then((response) => response.ok ? response.json() : Promise.reject()).then((data) => {
+      const branch = data.branches.find((item: { id: number }) => item.id === branchId);
+      const area = data.provinces.flatMap((province: { areas: Array<{ id: number; branchId: number; fee: string; latitude: string | null; longitude: string | null }> }) => province.areas).find((item: { id: number; branchId: number }) => item.id === areaId && item.branchId === branchId);
+      setFulfillment({ fee: mode === "delivery" ? Number(area?.fee ?? 0) : 0, branch, area });
+    }).catch(() => setFulfillment({ fee: 0 }));
   }, [mode, branchId, areaId]);
 
-  const range = mode === "pickup" ? pickupRange(lang) : deliveryRange(lang);
-  const grand = total + fee;
-  const branch = getBranches().find((b) => b.id === branchId);
+  const canQuote = Boolean(branchId && name && phone && (mode !== "delivery" || (areaId && block && street && building)));
+
+  useEffect(() => {
+    if (!canQuote) return;
+    const controller = new AbortController();
+    const scheduledStartAt = expectedDate && expectedStart ? new Date(`${expectedDate}T${expectedStart}:00+03:00`).toISOString() : undefined;
+    const scheduledEndAt = expectedDate && expectedEnd ? new Date(`${expectedDate}T${expectedEnd}:00+03:00`).toISOString() : undefined;
+    void fetch("/api/checkout/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        items: items.map((item) => ({ productId: item.productId, variantId: item.variantId, quantity: item.qty, note: item.note || undefined, optionValueIds: item.options.map((option) => option.choiceId) })),
+        mode, branchId, areaId, paymentMethod: payment || "cash", contact: { name, phone },
+        address: mode === "delivery" ? { type: useDelivery.getState().addressType, block, street, building, avenue, floor, apartment, paci, additional } : null,
+        scheduledStartAt, scheduledEndAt, promotionCode: promotionCode || undefined,
+      }),
+    }).then(async (response) => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to update the promotion.");
+      setQuote(result); setQuoteError(null);
+    }).catch((error: unknown) => {
+      if ((error as { name?: string }).name !== "AbortError") { setQuote(null); setQuoteError(error instanceof Error ? error.message : "Unable to update the promotion."); }
+    });
+    return () => controller.abort();
+  }, [additional, apartment, areaId, avenue, block, branchId, building, canQuote, expectedDate, expectedEnd, expectedStart, floor, items, mode, name, paci, payment, phone, promotionCode, street]);
+
+  const fee = quote && canQuote ? Number(quote.deliveryFee) : fulfillment.fee;
+  const subtotal = quote && canQuote ? Number(quote.subtotal) : total;
+  const discount = quote && canQuote ? Number(quote.discountTotal) : 0;
+  const grand = quote && canQuote ? Number(quote.total) : subtotal + fee;
+  const branch = fulfillment.branch;
   const areaLabel = ar && areaArName ? areaArName : areaName;
-  const branchLabel = ar && branch?.ar_name ? branch.ar_name : branch?.name;
+  const branchLabel = ar && branch?.nameAr ? branch.nameAr : branch?.name;
 
   const coords = useMemo(() => {
     if (mode === "pickup") {
-      const raw = branch as unknown as { lat?: string; lng?: string };
-      const lat = raw?.lat ? parseFloat(raw.lat) : NaN;
-      const lng = raw?.lng ? parseFloat(raw.lng) : NaN;
+      const lat = branch?.latitude ? parseFloat(branch.latitude) : NaN;
+      const lng = branch?.longitude ? parseFloat(branch.longitude) : NaN;
       if (
         Number.isFinite(lat) &&
         Number.isFinite(lng) &&
@@ -101,10 +127,12 @@ export default function CheckoutConfirmationPage() {
       ) {
         return { lat, lng };
       }
-      return BRANCH_COORDS[branchId ?? -1] ?? FALLBACK_COORDS;
+      return null;
     }
-    return getAreaLatLng(areaId);
-  }, [mode, branchId, areaId, branch]);
+    const lat = fulfillment.area?.latitude ? parseFloat(fulfillment.area.latitude) : NaN;
+    const lng = fulfillment.area?.longitude ? parseFloat(fulfillment.area.longitude) : NaN;
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }, [mode, branch, fulfillment.area]);
 
   const directionsUrl =
     coords != null
@@ -126,18 +154,50 @@ export default function CheckoutConfirmationPage() {
     if (!payment || placing) return;
     setPlacing(true);
     setPayError(null);
-    const orderNo = Math.floor(100000 + Math.random() * 900000);
-    if (payment === "cash") {
-      router.push(`/checkout/success?order=${orderNo}`);
-      return;
-    }
     try {
+      const scheduledStartAt = useDelivery.getState().expectedDate && useDelivery.getState().expectedStart
+        ? new Date(`${useDelivery.getState().expectedDate}T${useDelivery.getState().expectedStart}:00+03:00`).toISOString()
+        : undefined;
+      const scheduledEndAt = useDelivery.getState().expectedDate && useDelivery.getState().expectedEnd
+        ? new Date(`${useDelivery.getState().expectedDate}T${useDelivery.getState().expectedEnd}:00+03:00`).toISOString()
+        : undefined;
+      const orderResponse = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((item) => ({
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.qty,
+            note: item.note || undefined,
+            optionValueIds: item.options.map((option) => option.choiceId),
+          })),
+          mode,
+          branchId,
+          areaId,
+          paymentMethod: payment,
+          contact: { name, phone },
+          address: mode === "delivery" ? { type: useDelivery.getState().addressType, block, street, building, avenue, floor, apartment, paci, additional } : null,
+          scheduledStartAt,
+          scheduledEndAt,
+          promotionCode: promotionCode || undefined,
+        }),
+      });
+      const order = await orderResponse.json().catch(() => ({}));
+      if (!orderResponse.ok) {
+        setPayError(order.error || "Unable to place your order.");
+        return;
+      }
+      if (payment === "cash") {
+        router.push(`/checkout/success?order=${encodeURIComponent(order.orderNumber)}&token=${encodeURIComponent(order.trackingToken)}`);
+        return;
+      }
       const res = await fetch("/api/knet/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: grand.toFixed(3),
-          trackId: String(orderNo),
+          orderId: order.orderId,
+          trackingToken: order.trackingToken,
           lang: ar ? "ar" : "en",
         }),
       });
@@ -170,7 +230,7 @@ export default function CheckoutConfirmationPage() {
     .filter(Boolean)
     .join(sep);
 
-  const todayLabel = ar ? "اليوم" : "Today";
+  const scheduledLabel = expectedDate && expectedStart && expectedEnd ? slotText(expectedDate, expectedStart, expectedEnd, lang) : "";
 
   const rowIcon = "flex h-[21px] w-[21px] shrink-0 text-[#5b5b5b]";
 
@@ -195,12 +255,21 @@ export default function CheckoutConfirmationPage() {
             <div className="flex items-center ps-[15px]">
               <DeliveryTimeIcon className="shrink-0" />
               <span className="ms-[15px] text-[14px] font-bold text-[rgba(0,0,0,0.87)]">
-                {todayLabel} - {range.from} {ar ? "إلى" : "to"} {range.to}
+                {scheduledLabel}
               </span>
             </div>
             <div className="pe-[15px] text-start">
               <ChevronForwardIcon className="h-[21px] w-[21px] rotate-180 text-[#5b5b5b]" />
             </div>
+          </div>
+        </section>
+
+        <section className="mt-[30px]">
+          <p className="box-title">{ar ? "رمز الخصم" : "Promotion code"}</p>
+          <div className="mt-[5px] border-t border-b border-[#dee2e6] bg-white p-[15px]">
+            <div className="flex gap-2"><input value={promotionDraft} onChange={(event) => setPromotionDraft(event.target.value.toUpperCase())} placeholder={ar ? "أدخل الرمز" : "Enter code"} className="min-w-0 flex-1 border border-[#dee2e6] px-3 py-2 text-[14px]"/><button type="button" onClick={() => { setPromotionCode(promotionDraft.trim()); setQuoteError(null); }} className="border border-brand px-4 py-2 text-[14px] font-bold text-brand">{ar ? "تطبيق" : "Apply"}</button>{promotionCode && <button type="button" onClick={() => { setPromotionDraft(""); setPromotionCode(""); }} className="text-[13px] text-brand">{ar ? "إزالة" : "Remove"}</button>}</div>
+            {quote?.promotion && <p className="mt-2 text-[13px] text-[#666]">{ar ? "تم تطبيق" : "Applied"}: {quote.promotion.name}{quote.promotion.code ? ` (${quote.promotion.code})` : ""}</p>}
+            {quoteError && <p className="mt-2 text-[13px] text-red-600">{quoteError}</p>}
           </div>
         </section>
 
@@ -482,10 +551,11 @@ export default function CheckoutConfirmationPage() {
           )}
         >
           {[
-            { label: t("subtotal")[ar ? "ar" : "en"], value: fmtPrice(total, lang), bold: false },
+            { label: t("subtotal")[ar ? "ar" : "en"], value: fmtPrice(subtotal, lang), bold: false },
             ...(mode === "delivery"
               ? [{ label: t("deliveryFees")[ar ? "ar" : "en"], value: fmtPrice(fee, lang), bold: false }]
               : []),
+            ...(discount > 0 ? [{ label: ar ? "الخصم" : "Discount", value: `-${fmtPrice(discount, lang)}`, bold: false }] : []),
             { label: t("total")[ar ? "ar" : "en"], value: fmtPrice(grand, lang), bold: true },
           ].map((row, i, rows) => (
             <div

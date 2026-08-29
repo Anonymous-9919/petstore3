@@ -106,14 +106,16 @@ export const productEditorInputSchema = z.object({
 
 export const productBulkActionSchema = z.object({
   productIds: z.array(z.string().uuid()).min(1).max(100).refine((ids) => new Set(ids).size === ids.length, "Product IDs must be unique."),
-  action: z.enum(["activate", "draft", "archive", "restore", "category", "price"]),
+  action: z.enum(["activate", "draft", "archive", "restore", "category", "price", "tags"]),
   categoryId: z.string().uuid().optional(),
   basePrice: z.coerce.number().finite().min(0).max(999999999).optional(),
   compareAtPrice: z.coerce.number().finite().min(0).max(999999999).nullable().optional(),
+  tags: z.array(z.string().trim().min(1).max(80)).max(30).optional().transform((tags) => tags ? [...new Set(tags.map((tag) => tag.toLowerCase()))] : undefined),
 }).superRefine((value, context) => {
   if (value.action === "category" && !value.categoryId) context.addIssue({ code: "custom", path: ["categoryId"], message: "A category is required." });
   if (value.action === "price" && value.basePrice == null) context.addIssue({ code: "custom", path: ["basePrice"], message: "A base price is required." });
   if (value.action === "price" && value.compareAtPrice != null && value.basePrice != null && value.compareAtPrice < value.basePrice) context.addIssue({ code: "custom", path: ["compareAtPrice"], message: "Compare-at price must not be below the base price." });
+  if (value.action === "tags" && !value.tags?.length) context.addIssue({ code: "custom", path: ["tags"], message: "At least one tag is required." });
 });
 
 export const productListQuerySchema = z.object({

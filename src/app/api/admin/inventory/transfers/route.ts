@@ -16,8 +16,10 @@ export async function GET(request: Request) {
     db.inventoryTransfer.count({ where }),
   ]);
   const products = await db.product.findMany({ where: { id: { in: transfers.flatMap((transfer) => transfer.lines.map((line) => line.productId)) } }, select: { id: true, name: true, sku: true } });
+  const variants = await db.productVariant.findMany({ where: { id: { in: transfers.flatMap((transfer) => transfer.lines.flatMap((line) => line.variantId ? [line.variantId] : [])) } }, select: { id: true, sku: true, name: true, nameAr: true, isActive: true } });
   const productById = new Map(products.map((product) => [product.id, product]));
-  return NextResponse.json({ transfers: transfers.map((transfer) => ({ ...transfer, lines: transfer.lines.map((line) => ({ ...line, product: productById.get(line.productId) ?? { id: line.productId, name: "Product unavailable", sku: null } })) })), pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+  const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+  return NextResponse.json({ transfers: transfers.map((transfer) => ({ ...transfer, lines: transfer.lines.map((line) => ({ ...line, product: productById.get(line.productId) ?? { id: line.productId, name: "Product unavailable", sku: null }, variant: line.variantId ? variantById.get(line.variantId) ?? { id: line.variantId, sku: null, name: "Variant unavailable", nameAr: "", isActive: false } : null })) })), pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
 }
 
 export async function POST(request: Request) {
@@ -29,17 +31,18 @@ export async function POST(request: Request) {
   const result = await db.$transaction(async (tx) => {
     const branches = await tx.branch.count({ where: { id: { in: [input.sourceBranchId, input.destinationBranchId] }, isActive: true } });
     if (branches !== 2) return null;
-    const products = await tx.product.findMany({ where: { id: { in: input.lines.map((line) => line.productId) }, archivedAt: null }, select: { id: true } });
+    const products = await tx.product.findMany({ where: { id: { in: input.lines.map((line) => line.productId) }, archivedAt: null, isActive: true }, select: { id: true } });
     if (products.length !== new Set(input.lines.map((line) => line.productId)).size) return false;
-    const variants = await tx.productVariant.findMany({ where: { OR: input.lines.map((line) => line.variantId ? { id: line.variantId, productId: line.productId } : { productId: line.productId, isDefault: true }) }, select: { id: true, productId: true } });
-    if (variants.length !== input.lines.length) return false;
+    const variants = await tx.productVariant.findMany({ where: { OR: input.lines.map((line) => line.variantId ? { id: line.variantId, productId: line.productId, isActive: true } : { productId: line.productId, isDefault: true, isActive: true }) }, select: { id: true, productId: true } });
     const lines = input.lines.map((line) => ({ ...line, variantId: line.variantId ?? variants.find((variant) => variant.productId === line.productId)?.id }));
     if (lines.some((line) => !line.variantId)) return false;
+    if (new Set(lines.map((line) => `${line.productId}:${line.variantId}`)).size !== lines.length) return "duplicate";
     const transfer = await tx.inventoryTransfer.create({ data: { transferNumber: `TRF-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`, sourceBranchId: input.sourceBranchId, destinationBranchId: input.destinationBranchId, note: input.note, createdById: authorization.user.id, lines: { create: lines.map((line) => ({ ...line, variantId: line.variantId as string })) } }, include: { lines: true } });
     await tx.auditLog.create({ data: { actorId: authorization.user.id, action: "inventory.transfer_created", entityType: "inventoryTransfer", entityId: transfer.id, after: { status: transfer.status, sourceBranchId: transfer.sourceBranchId, destinationBranchId: transfer.destinationBranchId, lines: transfer.lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })) } } });
     return transfer;
   });
   if (result === null) return NextResponse.json({ error: "Source and destination must be active branches." }, { status: 400 });
   if (result === false) return NextResponse.json({ error: "One or more products are unavailable." }, { status: 400 });
+  if (result === "duplicate") return NextResponse.json({ error: "A variant can appear only once in a transfer." }, { status: 400 });
   return NextResponse.json({ transfer: result }, { status: 201 });
 }

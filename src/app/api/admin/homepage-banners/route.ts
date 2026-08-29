@@ -3,12 +3,16 @@ import { z } from "zod";
 import { authorizeAdminApi } from "@/server/auth";
 import { db } from "@/server/db";
 import { revalidateStorefrontContent } from "@/server/catalog-cache";
+import { bannerInputSchema } from "@/server/validation/storefront-content";
 
 const bannerKind = "HOMEPAGE_BANNER";
-const nullableText = z.string().trim().max(2_000).nullable();
-export const bannerSchema = z.object({
-  path: z.string().trim().min(1).max(2_000), mobilePath: nullableText, alt: z.string().trim().max(500).nullable(), altAr: z.string().trim().max(500).nullable(), sortOrder: z.number().int().min(0).max(10_000), status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]), placement: z.enum(["HOMEPAGE", "CATEGORY", "HERO"]).default("HOMEPAGE"), categoryId: z.string().uuid().nullable().default(null), startsAt: z.coerce.date().nullable(), endsAt: z.coerce.date().nullable(),
-}).superRefine((value, context) => { if (value.startsAt && value.endsAt && value.startsAt >= value.endsAt) context.addIssue({ code: "custom", path: ["endsAt"], message: "End time must be after start time." }); if (value.placement === "CATEGORY" && !value.categoryId) context.addIssue({ code: "custom", path: ["categoryId"], message: "Category banners require a category ID." }); if (value.placement !== "CATEGORY" && value.categoryId) context.addIssue({ code: "custom", path: ["categoryId"], message: "Only category banners can have a category ID." }); });
+export const bannerSchema = bannerInputSchema;
+
+export async function validateBannerCategory(tx: { category: { findFirst: (args: { where: { id: string; isActive: boolean; archivedAt: null }; select: { id: boolean } }) => Promise<{ id: string } | null> } }, data: z.infer<typeof bannerSchema>) {
+  if (data.placement !== "CATEGORY") return;
+  const category = await tx.category.findFirst({ where: { id: data.categoryId!, isActive: true, archivedAt: null }, select: { id: true } });
+  if (!category) throw new Error("CATEGORY_UNAVAILABLE");
+}
 
 export async function GET() {
   const authorization = await authorizeAdminApi("homepage");
@@ -22,13 +26,16 @@ export async function POST(request: Request) {
   const user = authorization.user;
   const parsed = bannerSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid homepage banner." }, { status: 400 });
-  const banner = await db.$transaction(async (tx) => {
-    const created = await tx.storeAsset.create({ data: { kind: bannerKind, ...parsed.data, isActive: parsed.data.status === "ACTIVE", archivedAt: parsed.data.status === "ARCHIVED" ? new Date() : null } });
-    await tx.auditLog.create({ data: { actorId: user.id, action: "homepage.banner.created", entityType: "storeAsset", entityId: created.id, after: parsed.data } });
-    return created;
-  });
-  revalidateStorefrontContent();
-  return NextResponse.json(banner, { status: 201 });
+  try {
+    const banner = await db.$transaction(async (tx) => {
+      await validateBannerCategory(tx, parsed.data);
+      const created = await tx.storeAsset.create({ data: { kind: bannerKind, ...parsed.data, isActive: parsed.data.status === "ACTIVE", archivedAt: parsed.data.status === "ARCHIVED" ? new Date() : null } });
+      await tx.auditLog.create({ data: { actorId: user.id, action: "homepage.banner.created", entityType: "storeAsset", entityId: created.id, after: parsed.data } });
+      return created;
+    });
+    revalidateStorefrontContent();
+    return NextResponse.json(banner, { status: 201 });
+  } catch { return NextResponse.json({ error: "Category banners require an active category." }, { status: 409 }); }
 }
 
 export async function PUT(request: Request) {
@@ -36,7 +43,15 @@ export async function PUT(request: Request) {
   if (!authorization.authorized) return authorization.response;
   const parsed = z.array(z.object({ id: z.string().uuid(), sortOrder: z.number().int().min(0).max(10_000) })).min(1).max(100).safeParse(await request.json().catch(() => null));
   if (!parsed.success || new Set(parsed.data.map((item) => item.id)).size !== parsed.data.length) return NextResponse.json({ error: "Provide unique banner IDs and display orders." }, { status: 400 });
-  await db.$transaction(parsed.data.map((item) => db.storeAsset.updateMany({ where: { id: item.id, kind: bannerKind }, data: { sortOrder: item.sortOrder } })));
+  const ids = parsed.data.map((item) => item.id);
+  const result = await db.$transaction(async (tx) => {
+    const banners = await tx.storeAsset.findMany({ where: { id: { in: ids }, kind: bannerKind }, select: { id: true } });
+    if (banners.length !== ids.length) return false;
+    await Promise.all(parsed.data.map((item) => tx.storeAsset.update({ where: { id: item.id }, data: { sortOrder: item.sortOrder } })));
+    await tx.auditLog.create({ data: { actorId: authorization.user.id, action: "homepage.banner.reordered", entityType: "storeAsset", entityId: "homepage-banners", after: { order: parsed.data } } });
+    return true;
+  });
+  if (!result) return NextResponse.json({ error: "One or more homepage banners were not found." }, { status: 404 });
   revalidateStorefrontContent();
   return NextResponse.json({ ok: true });
 }

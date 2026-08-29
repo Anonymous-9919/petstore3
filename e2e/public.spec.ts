@@ -15,17 +15,18 @@ test.describe("public storefront", () => {
 
     await page.getByRole("button", { name: "Toggle language" }).first().focus();
     await expect(page.getByRole("button", { name: "Toggle language" }).first()).toBeFocused();
-    await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
-    await page.getByRole("button", { name: "Toggle language" }).first().press("Enter");
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+    await page.getByRole("button", { name: "Toggle language" }).first().press("Enter");
+    await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
 
     expect(errors).toEqual([]);
   });
 
   test("adapts to the active viewport without horizontal overflow", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("button", { name: /filter/i })).toBeVisible();
-    await page.getByRole("button", { name: /filter/i }).click();
+    const filterButton = page.getByRole("button", { name: /filter|التصفية/i });
+    await expect(filterButton).toBeVisible();
+    await filterButton.click();
     await expect(page.getByRole("button", { name: "close" })).toBeVisible();
     await page.getByRole("button", { name: "close" }).click();
     await expect(page.getByRole("button", { name: "close" })).toBeHidden();

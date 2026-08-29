@@ -51,6 +51,14 @@ describe("product CSV import", () => {
     expect(preview.errors).toContainEqual(expect.objectContaining({ message: "Update mode requires an existing variant SKU or public ID." }));
   });
 
+  it("supports bilingual template aliases, tags, SEO, and multiple HTTPS image URLs", () => {
+    const csv = "handle,variant_sku,category_slug,title_en,title_ar,price_kwd,tags,seo_title,seo_title_ar,seo_description,seo_description_ar,image_urls\ndog-food,FOOD-S,dogs,Dog food,طعام الكلاب,4.500,dog; food,Dog food SEO,طعام الكلاب SEO,English SEO,Arabic SEO,https://example.test/one.jpg; https://example.test/two.jpg\n";
+    const preview = previewImport({ csv, ...context, variants: [] });
+    expect(preview.errors).toEqual([]);
+    expect(preview.rows[0].product).toMatchObject({ name: "Dog food", nameAr: "طعام الكلاب", tags: ["dog", "food"], seoTitle: "Dog food SEO" });
+    expect(preview.rows[0].imageUrls).toEqual(["https://example.test/one.jpg", "https://example.test/two.jpg"]);
+  });
+
   it("only accepts image paths issued by the media upload architecture", () => {
     expect(isApprovedMediaPath("uploads/2026-08-25/123e4567-e89b-42d3-a456-426614174000.webp")).toBe(true);
     expect(isApprovedMediaPath("https://example.test/product.jpg")).toBe(false);

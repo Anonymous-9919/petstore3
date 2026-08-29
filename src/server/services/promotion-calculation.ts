@@ -26,11 +26,11 @@ export function calculatePromotionDiscount(promotion: PromotionCalculation, line
     const rewardQuantity = promotion.rewardQuantity ?? 1;
     const rewardLines = lines.filter((line) => rewardIds.includes(line.product.id));
     if (!qualifyingQuantity || rewardLines.length === 0) throw new Error("This promotion requires qualifying and reward products in the cart.");
-    // If an item qualifies for and receives the reward, reserve the purchased quantity first.
+    // Overlapping reward items cannot also satisfy the purchase requirement.
     const overlappingQuantity = lines.filter((line) => qualifyingIds.includes(line.product.id) && rewardIds.includes(line.product.id)).reduce((total, line) => total + (line.quantity ?? 1), 0);
-    const sets = promotion.benefit === "BUY_X_GET_Y" && overlappingQuantity
-      ? Math.floor(overlappingQuantity / (requiredQuantity + rewardQuantity))
-      : promotion.benefit === "BUY_X_GET_Y" ? Math.floor(qualifyingQuantity / requiredQuantity) : 1;
+    const availableRewards = rewardLines.reduce((total, line) => total + (line.quantity ?? 1), 0);
+    let sets = promotion.benefit === "BUY_X_GET_Y" ? Math.min(Math.floor(qualifyingQuantity / requiredQuantity), Math.floor(availableRewards / rewardQuantity)) : 1;
+    while (sets > 0 && qualifyingQuantity - Math.min(overlappingQuantity, sets * rewardQuantity) < sets * requiredQuantity) sets -= 1;
     const freeUnits = sets * rewardQuantity;
     if (!freeUnits) throw new Error("This promotion requires a higher qualifying quantity.");
     let remaining = freeUnits;

@@ -12,18 +12,18 @@ function SandboxInner() {
   const ar = lang === "ar";
   const router = useRouter();
   const sp = useSearchParams();
-  const trackId = sp.get("trackId") || "000000";
+  const orderId = sp.get("orderId") || "";
+  const token = sp.get("token") || "";
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
-    // Simulate the gateway POSTing back to /api/knet/response, then redirect
-    // to the merchant success page (mirrors the real KNET round-trip).
-    setTimeout(() => {
-      router.replace(`/checkout/success?order=${encodeURIComponent(trackId)}`);
-    }, 700);
+    const response = await fetch("/api/payments/mock/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId, trackingToken: token }) });
+    const payment = await response.json().catch(() => ({}));
+    if (!response.ok) { setLoading(false); return; }
+    router.replace(`/checkout/success?order=${encodeURIComponent(payment.orderNumber)}&token=${encodeURIComponent(payment.trackingToken)}`);
   };
 
   return (

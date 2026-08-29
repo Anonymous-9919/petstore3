@@ -22,3 +22,17 @@ jobs:
           curl --fail-with-body --silent --show-error --retry 2 --retry-all-errors \
             --header "Authorization: Bearer $CRON_SECRET" \
             "$RESERVATION_EXPIRY_URL"
+
+  reconcile-promotions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reconcile scheduled promotion states
+        env:
+          PROMOTION_RECONCILIATION_URL: ${{ secrets.PROMOTION_RECONCILIATION_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$PROMOTION_RECONCILIATION_URL"
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --silent --show-error --retry 2 --retry-all-errors \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$PROMOTION_RECONCILIATION_URL"
